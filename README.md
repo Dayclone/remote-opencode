@@ -175,9 +175,7 @@ https://discord.com/api/oauth2/authorize?client_id=YOUR_CLIENT_ID&permissions=31
 3. Right-click on your server name in the sidebar
 4. Click **"Copy Server ID"**
 
-<!-- SCREENSHOT: Discord showing Copy Server ID option -->
-<!-- ![Copy Server ID](./docs/images/04-guild-id.png) -->
-*Screenshot placeholder: Right-click menu showing "Copy Server ID" option*
+<img width="184" height="530" alt="스크린샷 2026-02-03 오전 2 34 31" src="https://github.com/user-attachments/assets/8ecc2a28-05e5-494f-834f-95d9d0e4e730" />
 
 ### Step 6: Invite Bot to Your Server
 
@@ -190,8 +188,6 @@ https://discord.com/api/oauth2/authorize?client_id=YOUR_CLIENT_ID&permissions=21
 1. Replace `YOUR_CLIENT_ID` with your Application ID
 2. Open the URL in your browser
 3. Select your server and authorize
-
-<img width="184" height="530" alt="스크린샷 2026-02-03 오전 2 34 31" src="https://github.com/user-attachments/assets/8ecc2a28-05e5-494f-834f-95d9d0e4e730" />
 
 
 ---
