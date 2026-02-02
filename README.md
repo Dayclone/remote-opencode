@@ -148,22 +148,19 @@ The bot needs specific permissions to function properly. You can configure permi
 3. In **"Scopes"**, select:
    - ✅ `bot`
    - ✅ `applications.commands`
-4. In **"Bot Permissions"**, select the following:
+4. In **"Bot Permissions"**, select only these essential permissions:
    
    **General Permissions:**
-   - ✅ **View Audit Log**
+   - ✅ **View Channels** — Required to access channels
    
    **Text Permissions:**
-   - ✅ **Send Messages**
-   - ✅ **Create Private Threads**
-   - ✅ **Embed Links**
-   - ✅ **Attach Files**
-   - ✅ **Mention @everyone, @here, and All Roles**
-   - ✅ **Use External Emojis**
-   - ✅ **Use External Stickers**
-   - ✅ **Add Reactions**
-   - ✅ **Use Slash Commands**
-   - ✅ **Create Polls**
+   - ✅ **Send Messages** — Send responses to channels
+   - ✅ **Create Public Threads** — Create threads for each `/opencode` session
+   - ✅ **Send Messages in Threads** — Reply within threads
+   - ✅ **Embed Links** — Send formatted embed messages
+   - ✅ **Read Message History** — Access context for conversations
+   - ✅ **Add Reactions** — Add buttons (uses emoji reactions internally)
+   - ✅ **Use Slash Commands** — Register and use slash commands
 
 5. Copy the generated URL at the bottom — this is your bot invite link!
 
@@ -176,24 +173,25 @@ The bot needs specific permissions to function properly. You can configure permi
 If you're building the URL manually, use this permission value:
 
 ```
-https://discord.com/api/oauth2/authorize?client_id=YOUR_CLIENT_ID&permissions=218900185540&scope=bot%20applications.commands
+https://discord.com/api/oauth2/authorize?client_id=YOUR_CLIENT_ID&permissions=343932274624&scope=bot%20applications.commands
 ```
 
-**Permission Breakdown (218900185540):**
+**Permission Breakdown (343932274624):**
 
 | Permission | Value | Purpose |
 |------------|-------|---------|
-| View Audit Log | 128 | View server audit logs |
-| Send Messages | 2048 | Send messages in channels |
-| Create Private Threads | 68719476736 | Create private threads for worktrees |
-| Embed Links | 16384 | Send rich embed messages |
-| Attach Files | 32768 | Upload files with messages |
-| Mention @everyone, @here | 131072 | Mention all channel members |
-| Use External Emojis | 262144 | Use emojis from other servers |
-| Use External Stickers | 137438953472 | Use stickers from other servers |
-| Add Reactions | 64 | Add emoji reactions to messages |
-| Use Slash Commands | 2147483648 | Use and create slash commands |
-| Create Polls | 256 | Create poll messages |
+| View Channels | 1024 | Access channels and read messages |
+| Send Messages | 2048 | Send messages to channels |
+| Create Public Threads | 68719476736 | Create threads for each `/opencode` command |
+| Send Messages in Threads | 274877906944 | Reply within created threads |
+| Embed Links | 16384 | Send rich embed messages with formatting |
+| Read Message History | 65536 | Access previous messages for context |
+| Add Reactions | 64 | Add button components (uses emoji reactions) |
+| Use Slash Commands | 2147483648 | Register and respond to slash commands |
+
+**Optional Permissions (not required):**
+- **Attach Files** (32768) — Only if you want to upload files
+- **Mention @everyone** (131072) — Only if bot needs to ping everyone
 
 **Important:** The URL must include `applications.commands` scope for slash commands to work!
 
@@ -213,7 +211,7 @@ https://discord.com/api/oauth2/authorize?client_id=YOUR_CLIENT_ID&permissions=21
 Use the URL generated in Step 4 (OAuth2 URL Generator), or construct it manually:
 
 ```
-https://discord.com/api/oauth2/authorize?client_id=YOUR_CLIENT_ID&permissions=218900185540&scope=bot%20applications.commands
+https://discord.com/api/oauth2/authorize?client_id=YOUR_CLIENT_ID&permissions=343932274624&scope=bot%20applications.commands
 ```
 
 1. Replace `YOUR_CLIENT_ID` with your Application ID
