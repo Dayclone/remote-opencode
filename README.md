@@ -2,6 +2,10 @@
 
 > Control your AI coding assistant from anywhere — your phone, tablet, or another computer.
 
+<div align="center">
+<img width="1024" alt="Gemini_Generated_Image_47d5gq47d5gq47d5" src="https://github.com/user-attachments/assets/1defa11d-6195-4a9c-956b-4f87470f6393" />
+</div>
+
 **remote-opencode** is a Discord bot that bridges your local [OpenCode CLI](https://github.com/sst/opencode) to Discord, enabling you to interact with your AI coding assistant remotely. Perfect for developers who want to:
 
 - 📱 **Code from mobile** — Send coding tasks from your phone while away from your desk
