@@ -60,6 +60,7 @@ describe('serveManager', () => {
         ['serve', '--port', port.toString(), '--hostname', '0.0.0.0'],
         expect.objectContaining({
           cwd: projectPath,
+          shell: true,
         })
       );
     });
@@ -198,8 +199,8 @@ describe('serveManager', () => {
       const promise = serveManager.waitForReady(14097);
 
       await vi.advanceTimersByTimeAsync(0);
-      await vi.advanceTimersByTimeAsync(500);
-      await vi.advanceTimersByTimeAsync(500);
+      await vi.advanceTimersByTimeAsync(1000);
+      await vi.advanceTimersByTimeAsync(1000);
 
       await expect(promise).resolves.toBeUndefined();
       expect(fetch).toHaveBeenCalledTimes(3);
@@ -210,7 +211,7 @@ describe('serveManager', () => {
 
       const promise = serveManager.waitForReady(14097, 1000);
       
-      const wrappedPromise = expect(promise).rejects.toThrow('Service at port 14097 failed to become ready within 1000ms');
+      const wrappedPromise = expect(promise).rejects.toThrow('Service at port 14097 failed to become ready within 1000ms. Check if \'opencode serve\' is working correctly.');
 
       await vi.advanceTimersByTimeAsync(1500);
 

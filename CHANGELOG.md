@@ -2,6 +2,19 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.10] - 2026-02-04
+
+### Added
+- New `/setports` slash command to configure the port range for OpenCode server instances.
+
+### Fixed
+- Fixed Windows-specific spawning issue where the bot failed to find the `opencode` command (now targeting `opencode.cmd`).
+- Resolved `spawn EINVAL` errors on Windows by correctly configuring shell execution.
+- Fixed a crash where the bot would attempt to pass an unsupported `--model` flag to `opencode serve`.
+- Improved server reliability by extending the ready-check timeout to 30 seconds.
+- Suppressed `DEP0190` security warnings in the terminal caused by Windows-specific shell execution requirements.
+- Standardized internal communication to use `127.0.0.1` and added real-time process logging (available via `DEBUG` env var).
+
 ## [1.0.9] - 2026-02-04
 
 ### Added

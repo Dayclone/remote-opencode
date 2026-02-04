@@ -7,6 +7,7 @@ import { work } from './work.js';
 import { code } from './code.js';
 import { autowork } from './autowork.js';
 import { model } from './model.js';
+import { setports } from './setports.js';
 
 export interface Command {
   data: SlashCommandBuilder;
@@ -22,3 +23,5 @@ commands.set(work.data.name, work);
 commands.set(code.data.name, code);
 commands.set(autowork.data.name, autowork);
 commands.set(model.data.name, model);
+commands.set(setports.data.name, setports as Command);
+
