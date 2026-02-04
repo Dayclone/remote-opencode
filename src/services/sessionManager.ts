@@ -4,7 +4,7 @@ import * as dataStore from './dataStore.js';
 const threadSseClients = new Map<string, SSEClient>();
 
 export async function createSession(port: number): Promise<string> {
-  const url = `http://localhost:${port}/session`;
+  const url = `http://127.0.0.1:${port}/session`;
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -25,7 +25,7 @@ export async function createSession(port: number): Promise<string> {
 }
 
 export async function sendPrompt(port: number, sessionId: string, text: string): Promise<void> {
-  const url = `http://localhost:${port}/session/${sessionId}/prompt_async`;
+  const url = `http://127.0.0.1:${port}/session/${sessionId}/prompt_async`;
   const response = await fetch(url, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -41,7 +41,7 @@ export async function sendPrompt(port: number, sessionId: string, text: string):
 
 export async function validateSession(port: number, sessionId: string): Promise<boolean> {
   try {
-    const url = `http://localhost:${port}/session/${sessionId}`;
+    const url = `http://127.0.0.1:${port}/session/${sessionId}`;
     const response = await fetch(url, {
       method: 'GET',
       headers: { 'Content-Type': 'application/json' },
@@ -54,7 +54,7 @@ export async function validateSession(port: number, sessionId: string): Promise<
 
 export async function listSessions(port: number): Promise<string[]> {
   try {
-    const url = `http://localhost:${port}/session`;
+    const url = `http://127.0.0.1:${port}/session`;
     const response = await fetch(url, {
       method: 'GET',
       headers: { 'Content-Type': 'application/json' },
@@ -76,7 +76,7 @@ export async function listSessions(port: number): Promise<string[]> {
 
 export async function abortSession(port: number, sessionId: string): Promise<boolean> {
   try {
-    const url = `http://localhost:${port}/session/${sessionId}/abort`;
+    const url = `http://127.0.0.1:${port}/session/${sessionId}/abort`;
     const response = await fetch(url, {
       method: 'POST',
     });

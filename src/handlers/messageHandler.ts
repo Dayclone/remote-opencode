@@ -87,6 +87,7 @@ export async function handleMessageCreate(message: Message): Promise<void> {
   }
   
   const effectivePath = worktreeMapping?.worktreePath ?? projectPath;
+  const preferredModel = dataStore.getChannelModel(parentChannelId);
   
   const existingClient = sessionManager.getSseClient(threadId);
   if (existingClient && existingClient.isConnected()) {
@@ -131,7 +132,7 @@ export async function handleMessageCreate(message: Message): Promise<void> {
   };
   
   try {
-    port = await serveManager.spawnServe(effectivePath);
+    port = await serveManager.spawnServe(effectivePath, preferredModel);
     
     await updateStreamMessage(`📌 **Prompt**: ${prompt}\n\n⏳ Waiting for OpenCode server...`, [buttons]);
     await serveManager.waitForReady(port);
@@ -152,7 +153,7 @@ export async function handleMessageCreate(message: Message): Promise<void> {
     }
     
     const sseClient = new SSEClient();
-    sseClient.connect(`http://localhost:${port}`);
+    sseClient.connect(`http://127.0.0.1:${port}`);
     sessionManager.setSseClient(threadId, sseClient);
     
     sseClient.onPartUpdated((part) => {

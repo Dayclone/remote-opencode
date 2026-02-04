@@ -9,6 +9,7 @@ export interface ProjectConfig {
 export interface ChannelBinding {
   channelId: string;
   projectAlias: string;
+  model?: string;
 }
 
 export interface DataStore {

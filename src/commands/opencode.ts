@@ -119,6 +119,7 @@ export const opencode: Command = {
     }
     
     const effectivePath = worktreeMapping?.worktreePath ?? projectPath;
+    const preferredModel = dataStore.getChannelModel(channelId);
     
     const existingClient = sessionManager.getSseClient(threadId);
     if (existingClient && existingClient.isConnected()) {
@@ -163,6 +164,7 @@ export const opencode: Command = {
     const spinner = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
     
     const updateStreamMessage = async (content: string, components: ActionRowBuilder<ButtonBuilder>[]) => {
+      if (!streamMessage) return;
       try {
         await streamMessage.edit({ content, components });
       } catch {
@@ -170,7 +172,7 @@ export const opencode: Command = {
     };
     
     try {
-      port = await serveManager.spawnServe(effectivePath);
+      port = await serveManager.spawnServe(effectivePath, preferredModel);
       
       await updateStreamMessage('⏳ Waiting for OpenCode server...', [buttons]);
       await serveManager.waitForReady(port);
@@ -191,7 +193,7 @@ export const opencode: Command = {
       }
       
       const sseClient = new SSEClient();
-      sseClient.connect(`http://localhost:${port}`);
+      sseClient.connect(`http://127.0.0.1:${port}`);
       sessionManager.setSseClient(threadId, sseClient);
       
       sseClient.onPartUpdated((part) => {

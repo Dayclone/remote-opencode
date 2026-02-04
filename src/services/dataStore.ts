@@ -59,15 +59,34 @@ export function removeProject(alias: string): boolean {
   return true;
 }
 
-export function setChannelBinding(channelId: string, projectAlias: string): void {
+export function setChannelBinding(channelId: string, projectAlias: string, model?: string): void {
   const data = loadData();
   const existing = data.bindings.findIndex(b => b.channelId === channelId);
   if (existing >= 0) {
     data.bindings[existing].projectAlias = projectAlias;
+    if (model !== undefined) {
+      data.bindings[existing].model = model;
+    }
   } else {
-    data.bindings.push({ channelId, projectAlias });
+    data.bindings.push({ channelId, projectAlias, model });
   }
   saveData(data);
+}
+
+export function setChannelModel(channelId: string, model: string): boolean {
+  const data = loadData();
+  const existing = data.bindings.findIndex(b => b.channelId === channelId);
+  if (existing >= 0) {
+    data.bindings[existing].model = model;
+    saveData(data);
+    return true;
+  }
+  return false;
+}
+
+export function getChannelModel(channelId: string): string | undefined {
+  const binding = loadData().bindings.find(b => b.channelId === channelId);
+  return binding?.model;
 }
 
 export function getChannelBinding(channelId: string): string | undefined {

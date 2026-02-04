@@ -37,7 +37,7 @@ async function findAvailablePort(): Promise<number> {
 
 async function isServerResponding(port: number): Promise<boolean> {
   try {
-    const response = await fetch(`http://localhost:${port}/session`, {
+    const response = await fetch(`http://127.0.0.1:${port}/session`, {
       signal: AbortSignal.timeout(2000),
     });
     return response.ok;
@@ -46,19 +46,25 @@ async function isServerResponding(port: number): Promise<boolean> {
   }
 }
 
-function cleanupInstance(projectPath: string): void {
-  instances.delete(projectPath);
+function cleanupInstance(key: string): void {
+  instances.delete(key);
 }
 
-export async function spawnServe(projectPath: string): Promise<number> {
-  const existing = instances.get(projectPath);
+export async function spawnServe(projectPath: string, model?: string): Promise<number> {
+  const key = model ? `${projectPath}:${model}` : projectPath;
+  const existing = instances.get(key);
   if (existing) {
     return existing.port;
   }
 
   const port = await findAvailablePort();
   
-  const child = spawn('opencode', ['serve', '--port', port.toString()], {
+  const args = ['serve', '--port', port.toString(), '--hostname', '0.0.0.0'];
+  if (model) {
+    args.push('--model', model);
+  }
+
+  const child = spawn('opencode', args, {
     cwd: projectPath,
     env: { ...process.env },
     stdio: ['inherit', 'pipe', 'pipe'],
@@ -73,43 +79,45 @@ export async function spawnServe(projectPath: string): Promise<number> {
     startTime: Date.now(),
   };
 
-  instances.set(projectPath, instance);
+  instances.set(key, instance);
 
   child.on('exit', async () => {
-    const inst = instances.get(projectPath);
+    const inst = instances.get(key);
     if (inst) {
       const stillRunning = await isServerResponding(inst.port);
       if (!stillRunning) {
-        cleanupInstance(projectPath);
+        cleanupInstance(key);
       }
     }
   });
 
   child.on('error', () => {
-    cleanupInstance(projectPath);
+    cleanupInstance(key);
   });
 
   return port;
 }
 
-export function getPort(projectPath: string): number | undefined {
-  return instances.get(projectPath)?.port;
+export function getPort(projectPath: string, model?: string): number | undefined {
+  const key = model ? `${projectPath}:${model}` : projectPath;
+  return instances.get(key)?.port;
 }
 
-export function stopServe(projectPath: string): boolean {
-  const instance = instances.get(projectPath);
+export function stopServe(projectPath: string, model?: string): boolean {
+  const key = model ? `${projectPath}:${model}` : projectPath;
+  const instance = instances.get(key);
   if (!instance) {
     return false;
   }
 
   instance.process.kill();
-  cleanupInstance(projectPath);
+  cleanupInstance(key);
   return true;
 }
 
 export async function waitForReady(port: number, timeout: number = 10000): Promise<void> {
   const start = Date.now();
-  const url = `http://localhost:${port}/session`;
+  const url = `http://127.0.0.1:${port}/session`;
 
   while (Date.now() - start < timeout) {
     try {
@@ -126,15 +134,15 @@ export async function waitForReady(port: number, timeout: number = 10000): Promi
 }
 
 export function stopAll(): void {
-  for (const [projectPath, instance] of instances) {
+  for (const [key, instance] of instances) {
     instance.process.kill();
-    cleanupInstance(projectPath);
+    cleanupInstance(key);
   }
 }
 
-export function getAllInstances(): Array<{ projectPath: string; port: number }> {
-  return Array.from(instances.entries()).map(([projectPath, instance]) => ({
-    projectPath,
+export function getAllInstances(): Array<{ key: string; port: number }> {
+  return Array.from(instances.entries()).map(([key, instance]) => ({
+    key,
     port: instance.port,
   }));
 }

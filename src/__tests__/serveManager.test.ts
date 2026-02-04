@@ -57,7 +57,7 @@ describe('serveManager', () => {
       expect(port).toBeLessThanOrEqual(14200);
       expect(spawn).toHaveBeenCalledWith(
         'opencode',
-        ['serve', '--port', port.toString()],
+        ['serve', '--port', port.toString(), '--hostname', '0.0.0.0'],
         expect.objectContaining({
           cwd: projectPath,
         })
@@ -96,6 +96,9 @@ describe('serveManager', () => {
       expect(serveManager.getPort(projectPath)).toBeDefined();
 
       mockProc.emit('exit', 0, null);
+
+      // Wait for async exit handler
+      await new Promise(resolve => setTimeout(resolve, 10));
 
       expect(serveManager.getPort(projectPath)).toBeUndefined();
     });
@@ -183,7 +186,7 @@ describe('serveManager', () => {
       await vi.runAllTimersAsync();
       
       await expect(promise).resolves.toBeUndefined();
-      expect(fetch).toHaveBeenCalledWith('http://localhost:14097/session');
+      expect(fetch).toHaveBeenCalledWith('http://127.0.0.1:14097/session');
     });
 
     it('should retry if fetch fails or returns not ok', async () => {
