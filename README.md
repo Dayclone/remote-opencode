@@ -42,12 +42,6 @@ The bot runs on your development machine alongside OpenCode. When you send a com
 - [Installation](#installation)
 - [Quick Start](#quick-start)
 - [Discord Bot Setup](#discord-bot-setup)
-  - [Step 1: Create Discord Application](#step-1-create-discord-application)
-  - [Step 2: Create Bot & Get Token](#step-2-create-bot--get-token)
-  - [Step 3: Enable Required Intents](#step-3-enable-required-intents)
-  - [Step 4: Configure Bot Permissions](#step-4-configure-bot-permissions)
-  - [Step 5: Get Your Server (Guild) ID](#step-5-get-your-server-guild-id)
-  - [Step 6: Invite Bot to Your Server](#step-6-invite-bot-to-your-server)
 - [CLI Commands](#cli-commands)
 - [Discord Slash Commands](#discord-slash-commands)
 - [Usage Workflow](#usage-workflow)
@@ -104,95 +98,30 @@ That's it! Now use Discord slash commands to interact with OpenCode.
 
 ## Discord Bot Setup
 
-Before using remote-opencode, you need to create a Discord Application and Bot. The setup wizard will guide you, but here's a visual walkthrough:
+The setup wizard (`remote-opencode setup`) guides you through the entire process interactively:
 
-### Step 1: Create Discord Application
+1. **Opens Discord Developer Portal** in your browser
+2. **Walks you through** creating an application, enabling intents, and getting your bot token
+3. **Generates the invite link** automatically and opens it in your browser
+4. **Deploys slash commands** to your server
 
-1. Go to [Discord Developer Portal](https://discord.com/developers/applications)
-2. Click **"New Application"**
-3. Enter a name (e.g., "Remote OpenCode")
-4. Copy the **Application ID** — you'll need this later
+Just run `remote-opencode setup` and follow the prompts — no manual URL copying needed!
 
-<img width="800" alt="image" src="https://github.com/user-attachments/assets/ca2e7ff3-91e7-4d66-93dc-c166189c0107" />
+<details>
+<summary>📖 Manual setup reference (click to expand)</summary>
 
-### Step 2: Create Bot & Get Token
+If you prefer manual setup or need to troubleshoot:
 
-1. Navigate to the **"Bot"** section in the sidebar
-2. Click **"Reset Token"** (or "View Token" if available)
-3. **Copy the token immediately** — it's only shown once!
-4. Keep this token secret — never share it publicly
+1. **Create Application**: Go to [Discord Developer Portal](https://discord.com/developers/applications), create a new application
+2. **Enable Intents**: In "Bot" section, enable SERVER MEMBERS INTENT and MESSAGE CONTENT INTENT
+3. **Get Bot Token**: In "Bot" section, reset/view token and copy it
+4. **Get Guild ID**: Enable Developer Mode in Discord settings, right-click your server → Copy Server ID
+5. **Invite Bot**: Use this URL format:
+   ```
+   https://discord.com/api/oauth2/authorize?client_id=YOUR_CLIENT_ID&permissions=2147534848&scope=bot+applications.commands
+   ```
 
-
-### Step 3: Enable Required Intents
-
-Still in the **"Bot"** section, scroll down to **"Privileged Gateway Intents"** and enable:
-
-- ✅ **SERVER MEMBERS INTENT**
-- ✅ **MESSAGE CONTENT INTENT**
-
-Click **"Save Changes"**
-
-<img width="1500" alt="image" src="https://github.com/user-attachments/assets/d20406ff-26ad-4204-9771-b157c340846a" />
-
-### Step 4: Configure Bot Permissions
-
-The bot needs specific permissions to function properly. You can configure permissions in two ways:
-
-#### Option A: Using OAuth2 URL Generator (Recommended)
-
-1. Navigate to the **"OAuth2"** section in the sidebar
-2. Click on **"URL Generator"**
-3. In **"Scopes"**, select:
-   - ✅ `bot`
-   - ✅ `applications.commands`
-4. In **"Bot Permissions"**, select only these essential permissions:
-   
-   **General Permissions:**
-   - ✅ **View Channels** — Required to access channels
-   
-   **Text Permissions:**
-   - ✅ **Send Messages** — Send responses to channels
-   - ✅ **Create Public Threads** — Create threads for each `/opencode` session
-   - ✅ **Send Messages in Threads** — Reply within threads
-   - ✅ **Embed Links** — Send formatted embed messages
-   - ✅ **Read Message History** — Access context for conversations
-   - ✅ **Add Reactions** — Add buttons (uses emoji reactions internally)
-   - ✅ **Use Slash Commands** — Register and use slash commands
-
-5. Copy the generated URL at the bottom — this is your bot invite link!
-
-
-#### Option B: Manual Permission Calculation
-
-If you're building the URL manually, use this permission value:
-
-```
-https://discord.com/api/oauth2/authorize?client_id=YOUR_CLIENT_ID&permissions=311385214016&integration_type=0&scope=bot+applications.commands
-```
-
-**Important:** The URL must include `applications.commands` scope for slash commands to work!
-
-### Step 5: Get Your Server (Guild) ID
-
-1. Open Discord and go to **User Settings → Advanced**
-2. Enable **"Developer Mode"**
-3. Right-click on your server name in the sidebar
-4. Click **"Copy Server ID"**
-
-<img width="184" height="530" alt="스크린샷 2026-02-03 오전 2 34 31" src="https://github.com/user-attachments/assets/8ecc2a28-05e5-494f-834f-95d9d0e4e730" />
-
-### Step 6: Invite Bot to Your Server
-
-Use the URL generated in Step 4 (OAuth2 URL Generator), or construct it manually:
-
-```
-https://discord.com/api/oauth2/authorize?client_id=YOUR_CLIENT_ID&permissions=218900185540&scope=bot%20applications.commands
-```
-
-1. Replace `YOUR_CLIENT_ID` with your Application ID
-2. Open the URL in your browser
-3. Select your server and authorize
-
+</details>
 
 ---
 

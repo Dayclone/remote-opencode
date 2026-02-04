@@ -1,9 +1,12 @@
 import * as p from '@clack/prompts';
 import pc from 'picocolors';
+import open from 'open';
 import { setBotConfig, getBotConfig, hasBotConfig } from '../services/configStore.js';
 import { deployCommands } from './deploy.js';
 
 const DISCORD_DEV_URL = 'https://discord.com/developers/applications';
+const BOT_PERMISSIONS = '2147534848';
+const BOT_SCOPES = 'bot applications.commands';
 
 function validateApplicationId(value: string): string | undefined {
   if (!value) return 'Application ID is required';
@@ -21,6 +24,22 @@ function validateGuildId(value: string): string | undefined {
   if (!value) return 'Guild ID is required';
   if (!/^\d{17,20}$/.test(value)) return 'Invalid format (should be 17-20 digits)';
   return undefined;
+}
+
+function generateInviteUrl(clientId: string): string {
+  const url = new URL('https://discord.com/api/oauth2/authorize');
+  url.searchParams.set('client_id', clientId);
+  url.searchParams.set('permissions', BOT_PERMISSIONS);
+  url.searchParams.set('scope', BOT_SCOPES);
+  return url.toString();
+}
+
+async function openUrl(url: string): Promise<void> {
+  try {
+    await open(url);
+  } catch {
+    // Silently fail - URL is displayed to user anyway
+  }
 }
 
 export async function runSetupWizard(): Promise<void> {
@@ -41,13 +60,27 @@ export async function runSetupWizard(): Promise<void> {
     }
   }
   
+  // Step 1: Open Discord Developer Portal
   p.note(
-    `1. Go to ${pc.cyan(DISCORD_DEV_URL)}\n` +
-    `2. Click ${pc.bold('"New Application"')}\n` +
-    `3. Give your application a name\n` +
-    `4. Copy the ${pc.bold('Application ID')} from "General Information"`,
+    `We'll open the Discord Developer Portal in your browser.\n\n` +
+    `1. Click ${pc.bold('"New Application"')}\n` +
+    `2. Give your application a name (e.g., "Remote OpenCode")\n` +
+    `3. Copy the ${pc.bold('Application ID')} from "General Information"`,
     'Step 1: Create Discord Application'
   );
+  
+  const openPortal = await p.text({
+    message: `Press ${pc.cyan('Enter')} to open Discord Developer Portal...`,
+    placeholder: 'Press Enter',
+    defaultValue: '',
+  });
+  
+  if (p.isCancel(openPortal)) {
+    p.cancel('Setup cancelled.');
+    process.exit(0);
+  }
+  
+  await openUrl(DISCORD_DEV_URL);
   
   const clientId = await p.text({
     message: 'Enter your Discord Application ID:',
@@ -60,25 +93,34 @@ export async function runSetupWizard(): Promise<void> {
     process.exit(0);
   }
   
+  // Step 2: Enable Intents (guidance only)
   p.note(
+    `In the Discord Developer Portal:\n\n` +
     `1. Go to the ${pc.bold('"Bot"')} section in the left sidebar\n` +
     `2. Scroll down to ${pc.bold('"Privileged Gateway Intents"')}\n` +
     `3. Enable these intents:\n` +
-    `   • ${pc.green('SERVER MEMBERS INTENT')}\n` +
-    `   • ${pc.green('MESSAGE CONTENT INTENT')}\n` +
-    `4. Click "Save Changes"`,
+    `   ${pc.green('*')} SERVER MEMBERS INTENT\n` +
+    `   ${pc.green('*')} MESSAGE CONTENT INTENT\n` +
+    `4. Click ${pc.bold('"Save Changes"')}`,
     'Step 2: Enable Required Intents'
   );
   
-  await p.confirm({
+  const intentsConfirm = await p.confirm({
     message: 'Have you enabled the required intents?',
     initialValue: true,
   });
   
+  if (p.isCancel(intentsConfirm)) {
+    p.cancel('Setup cancelled.');
+    process.exit(0);
+  }
+  
+  // Step 3: Get Bot Token (guidance only)
   p.note(
+    `Still in the Discord Developer Portal:\n\n` +
     `1. In the ${pc.bold('"Bot"')} section\n` +
     `2. Click ${pc.bold('"Reset Token"')} (or "View Token" if available)\n` +
-    `3. Copy the token (it's only shown once!)`,
+    `3. Copy the token ${pc.dim('(it\'s only shown once!)')}`,
     'Step 3: Get Bot Token'
   );
   
@@ -92,8 +134,9 @@ export async function runSetupWizard(): Promise<void> {
     process.exit(0);
   }
   
+  // Step 4: Get Guild ID (guidance only)
   p.note(
-    `1. Open Discord and go to User Settings > Advanced\n` +
+    `1. Open Discord and go to ${pc.bold('User Settings > Advanced')}\n` +
     `2. Enable ${pc.bold('"Developer Mode"')}\n` +
     `3. Right-click on your server name\n` +
     `4. Click ${pc.bold('"Copy Server ID"')}`,
@@ -111,6 +154,7 @@ export async function runSetupWizard(): Promise<void> {
     process.exit(0);
   }
   
+  // Save configuration
   const s = p.spinner();
   s.start('Saving configuration...');
   
@@ -122,13 +166,29 @@ export async function runSetupWizard(): Promise<void> {
   
   s.stop('Configuration saved!');
   
-  const inviteUrl = `https://discord.com/api/oauth2/authorize?client_id=${clientId}&permissions=2147534848&scope=bot`;
+  // Step 5: Invite Bot to Server
+  const inviteUrl = generateInviteUrl(clientId as string);
   
   p.note(
-    `Open this URL in your browser:\n\n${pc.cyan(inviteUrl)}\n\n` +
-    `Select your server and authorize the bot.`,
+    `We'll open the bot invite page in your browser.\n\n` +
+    `1. Select your server\n` +
+    `2. Click ${pc.bold('"Authorize"')}\n\n` +
+    `${pc.dim('URL: ' + inviteUrl)}`,
     'Step 5: Invite Bot to Server'
   );
+  
+  const openInvite = await p.text({
+    message: `Press ${pc.cyan('Enter')} to open the invite page...`,
+    placeholder: 'Press Enter',
+    defaultValue: '',
+  });
+  
+  if (p.isCancel(openInvite)) {
+    p.cancel('Setup cancelled.');
+    process.exit(0);
+  }
+  
+  await openUrl(inviteUrl);
   
   const invited = await p.confirm({
     message: 'Have you invited the bot to your server?',
@@ -140,6 +200,7 @@ export async function runSetupWizard(): Promise<void> {
     process.exit(0);
   }
   
+  // Step 6: Deploy Commands
   const shouldDeploy = await p.confirm({
     message: 'Deploy slash commands now?',
     initialValue: true,

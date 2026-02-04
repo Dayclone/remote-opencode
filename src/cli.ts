@@ -8,7 +8,7 @@ import { startBot } from './bot.js';
 import { hasBotConfig, getConfigDir } from './services/configStore.js';
 
 const require = createRequire(import.meta.url);
-const pkg = require('../../package.json');
+const pkg = require('../package.json');
 
 const program = new Command();
 
