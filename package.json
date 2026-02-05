@@ -1,6 +1,6 @@
 {
   "name": "remote-opencode",
-  "version": "1.0.10",
+  "version": "1.2.0",
   "description": "Discord bot for remote OpenCode CLI access",
   "main": "dist/src/index.js",
   "bin": {
@@ -15,8 +15,9 @@
   },
   "scripts": {
     "build": "tsc",
-    "start": "node --no-deprecation dist/src/cli.js start",
-    "dev": "node --loader ts-node/esm src/cli.ts",
+    "build:sea": "node scripts/build-sea.js",
+    "start": "node --no-deprecation --no-warnings dist/src/cli.js start",
+    "dev": "node --no-warnings --loader ts-node/esm src/cli.ts",
     "deploy-commands": "npm run build && node dist/src/cli.js deploy",
     "test": "vitest",
     "prepublishOnly": "npm run build",
@@ -35,21 +36,24 @@
   "license": "MIT",
   "type": "module",
   "dependencies": {
-    "@clack/prompts": "^0.9.1",
-    "@types/eventsource": "^1.1.15",
-    "commander": "^13.1.0",
+    "@clack/prompts": "^1.0.0",
+    "commander": "^14.0.3",
     "discord.js": "^14.25.1",
     "eventsource": "^4.1.0",
-    "node-pty": "^1.1.0",
-    "open": "^10.1.0",
+    "open": "^11.0.0",
     "picocolors": "^1.1.1",
     "update-notifier": "^7.3.1"
   },
   "devDependencies": {
-    "@types/node": "^25.1.0",
+    "@types/eventsource": "^1.1.15",
+    "@types/node": "^22.13.1",
     "@types/update-notifier": "^6.0.8",
+    "esbuild": "^0.25.0",
     "ts-node": "^10.9.2",
     "typescript": "^5.9.3",
     "vitest": "^4.0.18"
+  },
+  "overrides": {
+    "undici": "^6.23.0"
   }
 }

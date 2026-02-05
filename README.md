@@ -83,6 +83,15 @@ npm run build
 npm link  # Makes 'remote-opencode' available globally
 ```
 
+### Build Standalone Executable (Windows)
+
+If you want to create a single `.exe` that runs without Node.js installed:
+
+```bash
+# Generates dist/remote-opencode.exe
+npm run build:sea
+```
+
 ---
 
 ## Quick Start
@@ -143,6 +152,24 @@ If you prefer manual setup or need to troubleshoot:
 ## Discord Slash Commands
 
 Once the bot is running, use these commands in your Discord server:
+
+### `/diff` — View Current Changes
+
+View the git diff of the current project or active worktree.
+
+```
+/diff
+/diff staged:True
+```
+
+| Parameter | Description |
+|-----------|-------------|
+| `staged`  | Optional. If `True`, shows only staged changes. |
+
+**Features:**
+- 🌳 **Worktree Aware** — Automatically shows diffs for the specific worktree if used in a `/work` thread.
+- 📝 **Formatted** — Uses syntax-highlighted code blocks.
+- ✂️ **Smart Truncation** — Safely handles large diffs to stay within Discord's message limits.
 
 ### `/setpath` — Register a Project
 

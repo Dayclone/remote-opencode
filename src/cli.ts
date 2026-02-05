@@ -1,5 +1,10 @@
 #!/usr/bin/env node
-process.removeAllListeners('warning');
+if (typeof process !== 'undefined') {
+  // @ts-ignore
+  process.removeAllListeners('warning');
+}
+// We also set the environment variable to suppress warnings in spawned processes
+process.env.NODE_NO_WARNINGS = '1';
 import { Command } from 'commander';
 import pc from 'picocolors';
 import { createRequire } from 'module';
@@ -9,18 +14,32 @@ import { deployCommands } from './setup/deploy.js';
 import { startBot } from './bot.js';
 import { hasBotConfig, getConfigDir } from './services/configStore.js';
 
-const require = createRequire(import.meta.url);
-// In dev mode (src/cli.ts), package.json is one level up
-// In production (dist/src/cli.js), package.json is two levels up
-const pkg = (() => {
-  try {
-    return require('../../package.json');
-  } catch {
-    return require('../package.json');
-  }
-})();
+// Robust way to get package info that works in SEA
+let pkg: any;
+try {
+  // Use a hardcoded version as primary fallback for bundled/SEA environments
+  pkg = {
+    name: 'remote-opencode',
+    version: '1.2.0',
+    description: 'Discord bot for remote OpenCode CLI access'
+  };
+  
+  // Try to get real version if possible, but be extremely careful with import.meta.url
+  const metaUrl = typeof import.meta !== 'undefined' && import.meta.url ? import.meta.url : ('file://' + process.execPath);
+  const require = createRequire(metaUrl);
+  const realPkg = require('../package.json');
+  if (realPkg) pkg = realPkg;
+} catch {
+  // Fallback used
+}
 
-updateNotifier({ pkg }).notify({ isGlobal: true });
+if (pkg && pkg.name) {
+  try {
+    updateNotifier({ pkg }).notify({ isGlobal: true });
+  } catch {
+    // Ignore notifier errors
+  }
+}
 
 const program = new Command();
 
