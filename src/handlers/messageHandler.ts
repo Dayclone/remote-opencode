@@ -88,6 +88,7 @@ export async function handleMessageCreate(message: Message): Promise<void> {
   
   const effectivePath = worktreeMapping?.worktreePath ?? projectPath;
   const preferredModel = dataStore.getChannelModel(parentChannelId);
+  const modelDisplay = preferredModel ? `\`${preferredModel}\`` : 'default';
   
   const existingClient = sessionManager.getSseClient(threadId);
   if (existingClient && existingClient.isConnected()) {
@@ -109,7 +110,7 @@ export async function handleMessageCreate(message: Message): Promise<void> {
   let streamMessage: Message;
   try {
     streamMessage = await channel.send({
-      content: `📌 **Prompt**: ${prompt}\n\n🚀 Starting OpenCode server...`,
+      content: `📌 **Prompt**: ${prompt}\n\n🚀 Starting OpenCode server... (Model: ${modelDisplay})`,
       components: [buttons]
     });
   } catch {
@@ -134,8 +135,8 @@ export async function handleMessageCreate(message: Message): Promise<void> {
   try {
     port = await serveManager.spawnServe(effectivePath, preferredModel);
     
-    await updateStreamMessage(`📌 **Prompt**: ${prompt}\n\n⏳ Waiting for OpenCode server...`, [buttons]);
-    await serveManager.waitForReady(port);
+    await updateStreamMessage(`📌 **Prompt**: ${prompt}\n\n⏳ Waiting for OpenCode server... (Model: ${modelDisplay})`, [buttons]);
+    await serveManager.waitForReady(port, 30000, effectivePath, preferredModel);
     
     const existingSession = sessionManager.getSessionForThread(threadId);
     if (existingSession && existingSession.projectPath === effectivePath) {
@@ -225,7 +226,7 @@ export async function handleMessageCreate(message: Message): Promise<void> {
     }, 1000);
     
     await updateStreamMessage(`📌 **Prompt**: ${prompt}\n\n📝 Sending prompt...`, [buttons]);
-    await sessionManager.sendPrompt(port, sessionId, prompt);
+    await sessionManager.sendPrompt(port, sessionId, prompt, preferredModel);
     
   } catch (error) {
     if (updateInterval) {

@@ -36,6 +36,9 @@ export interface ServeInstance {
   port: number;
   process: ChildProcess;
   startTime: number;
+  exited?: boolean;
+  exitCode?: number | null;
+  exitError?: string;
 }
 
 export interface ThreadSession {

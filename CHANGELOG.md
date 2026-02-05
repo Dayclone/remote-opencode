@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.11] - 2026-02-04
+
+### Added
+- Model confirmation in Discord messages: The bot now displays which model is being used when starting a session.
+
+### Fixed
+- Fixed `--model` flag not being passed to `opencode serve` when a channel model preference was set via `/model set`.
+- Fixed instance key to include model, allowing the same project to use different models in different channels.
+- Fixed button handlers (Interrupt, Create PR) not respecting channel model preferences.
+
 ## [1.0.10] - 2026-02-04
 
 ### Added

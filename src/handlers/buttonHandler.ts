@@ -42,7 +42,11 @@ async function handleInterrupt(interaction: ButtonInteraction, threadId: string)
     return;
   }
 
-  const port = serveManager.getPort(session.projectPath);
+  const channel = interaction.channel;
+  const parentChannelId = channel?.isThread() ? (channel as ThreadChannel).parentId! : channel?.id;
+  const preferredModel = parentChannelId ? dataStore.getChannelModel(parentChannelId) : undefined;
+
+  const port = serveManager.getPort(session.projectPath, preferredModel);
   
   if (!port) {
     await interaction.reply({
@@ -97,11 +101,15 @@ async function handleWorktreePR(interaction: ButtonInteraction, threadId: string
     return;
   }
 
+  const channel = interaction.channel;
+  const parentChannelId = channel?.isThread() ? (channel as ThreadChannel).parentId! : channel?.id;
+  const preferredModel = parentChannelId ? dataStore.getChannelModel(parentChannelId) : undefined;
+
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   try {
-    const port = await serveManager.spawnServe(mapping.worktreePath);
-    await serveManager.waitForReady(port);
+    const port = await serveManager.spawnServe(mapping.worktreePath, preferredModel);
+    await serveManager.waitForReady(port, 30000, mapping.worktreePath, preferredModel);
 
     let sessionId: string;
     const existingSession = sessionManager.getSessionForThread(threadId);
@@ -114,7 +122,7 @@ async function handleWorktreePR(interaction: ButtonInteraction, threadId: string
     sessionManager.setSessionForThread(threadId, sessionId, mapping.worktreePath, port);
 
     const prPrompt = `Create a pull request for the current branch. Include a clear title and description summarizing all changes.`;
-    await sessionManager.sendPrompt(port, sessionId, prPrompt);
+    await sessionManager.sendPrompt(port, sessionId, prPrompt, preferredModel);
 
     await interaction.editReply({ content: '🚀 PR creation started! Check the thread for progress.' });
   } catch (error) {

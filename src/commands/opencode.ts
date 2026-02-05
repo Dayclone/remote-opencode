@@ -120,6 +120,7 @@ export const opencode: Command = {
     
     const effectivePath = worktreeMapping?.worktreePath ?? projectPath;
     const preferredModel = dataStore.getChannelModel(channelId);
+    const modelDisplay = preferredModel ? `\`${preferredModel}\`` : 'default';
     
     const existingClient = sessionManager.getSseClient(threadId);
     if (existingClient && existingClient.isConnected()) {
@@ -145,12 +146,14 @@ export const opencode: Command = {
     let streamMessage: Message;
     try {
       streamMessage = await thread.send({
-        content: '🚀 Starting OpenCode server...',
+        content: `🚀 Starting OpenCode server... (Model: ${modelDisplay})`,
         components: [buttons]
       });
     } catch {
       await interaction.editReply({
-        content: `📌 **Prompt**: ${prompt}\n\n❌ Cannot send message to thread.`
+        content: `📌 **Prompt**: ${prompt}
+
+❌ Cannot send message to thread.`
       });
       return;
     }
@@ -174,8 +177,8 @@ export const opencode: Command = {
     try {
       port = await serveManager.spawnServe(effectivePath, preferredModel);
       
-      await updateStreamMessage('⏳ Waiting for OpenCode server...', [buttons]);
-      await serveManager.waitForReady(port);
+      await updateStreamMessage(`⏳ Waiting for OpenCode server... (Model: ${modelDisplay})`, [buttons]);
+      await serveManager.waitForReady(port, 30000, effectivePath, preferredModel);
       
       const existingSession = sessionManager.getSessionForThread(threadId);
       if (existingSession && existingSession.projectPath === effectivePath) {
@@ -265,7 +268,7 @@ export const opencode: Command = {
       }, 1000);
       
       await updateStreamMessage('📝 Sending prompt...', [buttons]);
-      await sessionManager.sendPrompt(port, sessionId, prompt);
+      await sessionManager.sendPrompt(port, sessionId, prompt, preferredModel);
       
     } catch (error) {
       if (updateInterval) {
