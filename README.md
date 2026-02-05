@@ -58,11 +58,19 @@ The bot runs on your development machine alongside OpenCode. When you send a com
 
 ### Prerequisites
 
-- **Node.js 22+** — [Download](https://nodejs.org/)
 - **OpenCode CLI** — Must be installed and working on your machine
 - **Discord Account** — With a server where you have admin permissions
 
+### Standalone Executable (Windows)
+
+The easiest way to use **remote-opencode** is to download the standalone `.exe` from our [Releases](https://github.com/Dayclone/remote-opencode/releases) page.
+
+- **No Node.js required** — Everything is bundled inside the binary
+- **Portable** — Run it from any folder
+
 ### Install via npm
+
+If you have **Node.js 22+** installed:
 
 ```bash
 # Global installation (recommended)
@@ -72,19 +80,19 @@ npm install -g remote-opencode
 npx remote-opencode
 ```
 
-### Install from source
+### Build from source
 
 ```bash
-git clone https://github.com/RoundTable02/remote-opencode.git
+git clone https://github.com/Dayclone/remote-opencode.git
 cd remote-opencode
 npm install
 npm run build
 npm link  # Makes 'remote-opencode' available globally
 ```
 
-### Build Standalone Executable (Windows)
+### Create your own Standalone Executable
 
-If you want to create a single `.exe` that runs without Node.js installed:
+If you want to package your current source into a single `.exe`:
 
 ```bash
 # Generates dist/remote-opencode.exe
@@ -541,6 +549,11 @@ npm install
 npm run dev setup   # Run setup
 npm run dev start   # Start bot
 
+# Code Quality
+npm run lint         # Run ESLint
+npm run type-check   # Run TypeScript check
+npm run format:check # Verify code formatting
+
 # Build and run production
 npm run build
 npm start
@@ -592,6 +605,20 @@ src/
 ## Changelog
 
 See [CHANGELOG.md](CHANGELOG.md) for a full history of changes.
+
+### [1.2.0] - 2026-02-05
+
+#### Added
+
+- **Standalone Executable**: Full support for building a single, standalone `.exe` using Node.js SEA.
+- **New `/diff` Command**: View git changes (staged or unstaged) directly in Discord.
+- **CI/CD Pipeline**: Fully automated testing and release system that builds and attaches the EXE to every release.
+- **Node 24 Support**: Optimized for the latest Node.js runtimes.
+
+#### Fixed
+
+- **Security**: Forced `undici@^6.23.0` to resolve security advisories.
+- **Cleanup**: Removed unused `node-pty` dependency.
 
 ### [1.1.0] - 2026-02-05
 
