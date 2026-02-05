@@ -1,0 +1,43 @@
+name: Release Standalone Bot
+
+on:
+  push:
+    tags:
+      - 'v*' # Trigger on version tags like v1.2.0
+
+jobs:
+  build:
+    name: Build and Release
+    runs-on: windows-latest
+    permissions:
+      contents: write # Needed to create releases
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22 # Use Node 22+ for SEA support
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm install
+
+      - name: Run Tests
+        run: npm test
+
+      - name: Build Standalone EXE
+        run: npm run build:sea
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/remote-opencode.exe
+          name: Release ${{ github.ref_name }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
