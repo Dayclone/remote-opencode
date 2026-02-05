@@ -15,6 +15,7 @@ All notable changes to this project will be documented in this file.
 
 ### Changed
 - **Refactored Execution Logic**: Moved core prompt execution to a dedicated `executionService` for better reliability and code reuse.
+- **Hardened Server Binding**: Reverted `opencode serve` to use default `127.0.0.1` binding (previously `0.0.0.0`) and updated port availability checks to match, preventing local network exposure.
 
 ## [1.0.11] - 2026-02-04
 

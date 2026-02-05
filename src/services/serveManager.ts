@@ -22,8 +22,8 @@ function isPortAvailable(port: number): Promise<boolean> {
       });
     });
     
-    // Bind to 0.0.0.0 explicitly to match opencode serve's binding
-    server.listen(port, '0.0.0.0');
+    // Bind to 127.0.0.1 explicitly to match opencode serve's default binding
+    server.listen(port, '127.0.0.1');
   });
 }
 
@@ -94,7 +94,7 @@ export async function spawnServe(projectPath: string, model?: string): Promise<n
   
   // Note: opencode serve doesn't support --model flag
   // Model selection must happen at session/prompt level, not server startup
-  const args = ['serve', '--port', port.toString(), '--hostname', '0.0.0.0'];
+  const args = ['serve', '--port', port.toString()];
   
   console.log(`[opencode] Spawning: opencode ${args.join(' ')}`);
   console.log(`[opencode] Working directory: ${projectPath}`);

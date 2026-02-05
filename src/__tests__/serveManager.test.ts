@@ -21,7 +21,12 @@ vi.mock('node:net', () => ({
   },
 }));
 
+vi.mock('../services/configStore.js', () => ({
+  getPortConfig: vi.fn(),
+}));
+
 import * as serveManager from '../services/serveManager.js';
+import { getPortConfig } from '../services/configStore.js';
 import { spawn } from 'node:child_process';
 
 const createMockProcess = (): ChildProcess => {
@@ -38,7 +43,7 @@ const createMockProcess = (): ChildProcess => {
 
 describe('serveManager', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.resetAllMocks();
   });
 
   afterEach(() => {
@@ -57,7 +62,7 @@ describe('serveManager', () => {
       expect(port).toBeLessThanOrEqual(14200);
       expect(spawn).toHaveBeenCalledWith(
         'opencode',
-        ['serve', '--port', port.toString(), '--hostname', '0.0.0.0'],
+        ['serve', '--port', port.toString()],
         expect.objectContaining({
           cwd: projectPath,
           shell: true,
@@ -85,6 +90,20 @@ describe('serveManager', () => {
 
       expect(port1).not.toBe(port2);
       expect(spawn).toHaveBeenCalledTimes(2);
+    });
+
+    it('should respect custom port range from config', async () => {
+      vi.mocked(spawn).mockImplementation(() => createMockProcess());
+      vi.mocked(getPortConfig).mockReturnValue({ min: 20000, max: 20010 });
+
+      const port = await serveManager.spawnServe('/test/custom-port');
+
+      expect(port).toBe(20000);
+      expect(spawn).toHaveBeenCalledWith(
+        'opencode',
+        ['serve', '--port', '20000'],
+        expect.anything()
+      );
     });
 
     it('should clean up when process exits', async () => {
