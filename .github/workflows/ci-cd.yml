@@ -97,14 +97,13 @@ jobs:
         id: get_release_info
         shell: bash
         run: |
-          VERSION=$(node -p "require('./package.json').version")
+          # Use node to safely read version from package.json regardless of module type
+          VERSION=$(node -e "import fs from 'fs'; console.log(JSON.parse(fs.readFileSync('./package.json')).version)" --input-type=module)
           echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
 
           # Extract the section from CHANGELOG.md for the current version
-          # It looks for the header ## [VERSION] and takes everything until the next ## [
-          # Then we remove the last line (the next header) and any trailing link if it's there
-          # Using a temporary node script for robust cross-platform parsing
-          cat << 'EOF' > extract_changelog.js
+          # Using .cjs extension to force CommonJS mode for the extraction script
+          cat << 'EOF' > extract_changelog.cjs
           const fs = require('fs');
           const content = fs.readFileSync('CHANGELOG.md', 'utf8');
           const version = process.argv[2];
@@ -122,7 +121,7 @@ jobs:
           }
           EOF
 
-          node extract_changelog.js $VERSION
+          node extract_changelog.cjs $VERSION
 
       - name: 🔨 Build Standalone EXE
         run: npm run build:sea
