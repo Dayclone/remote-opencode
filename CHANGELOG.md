@@ -6,11 +6,15 @@ All notable changes to this project will be documented in this file.
 
 ### Added
 - Model confirmation in Discord messages: The bot now displays which model is being used when starting a session.
+- Real-time logging: Added always-on logging for `opencode serve` startup commands, working directories, and process output (stdout/stderr) for easier debugging.
 
 ### Fixed
-- Fixed `--model` flag not being passed to `opencode serve` when a channel model preference was set via `/model set`.
-- Fixed instance key to include model, allowing the same project to use different models in different channels.
-- Fixed button handlers (Interrupt, Create PR) not respecting channel model preferences.
+- Fixed `opencode serve` startup failures: The bot now correctly detects when the server fails to start immediately and reports the actual error message to Discord instead of timing out after 30 seconds.
+- Resolved `--model` flag error: Moved model selection from the `opencode serve` command (where it was unsupported) to the prompt API.
+- Fixed Model API format: Correctly formatted model identifiers as objects (`{ providerID, modelID }`) as required by the OpenCode API.
+- Improved Port Management: Fixed port availability checks to bind to `0.0.0.0` (matching the server) and added checks for orphaned servers to prevent "Address already in use" errors.
+- Fixed button handlers (Interrupt, Create PR) to correctly respect channel model preferences.
+- Fixed instance key logic to include the model, allowing multiple models to be used for the same project in different channels.
 
 ## [1.0.10] - 2026-02-04
 
