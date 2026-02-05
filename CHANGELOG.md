@@ -2,15 +2,6 @@
 
 All notable changes to this project will be documented in this file.
 
-## [1.1.1] - 2026-02-05
-
-### Added
-- Documentation for `/model` and `/setports` slash commands in README.
-- Regression tests for server lifecycle and port management.
-
-### Changed
-- **Hardened Server Binding**: All OpenCode server instances are now strictly bound to `127.0.0.1` to prevent unauthorized remote access.
-
 ## [1.1.0] - 2026-02-05
 
 ### Added
