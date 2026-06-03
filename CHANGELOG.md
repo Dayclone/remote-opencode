@@ -2,37 +2,199 @@
 
 All notable changes to this project will be documented in this file.
 
-## [1.2.1] - 2026-02-05
+## [Unreleased]
+
+## [1.5.3] - 2026-04-28
 
 ### Added
 
-- **Guided Onboarding**: Added an interactive prompt that automatically offers to run the setup wizard if the bot is launched without any configuration.
-- **Improved Windows Experience**: Enhanced the standalone EXE behavior to prevent the terminal window from closing immediately after showing help text.
+- **Upstream `OPENCODE_SERVER_PASSWORD` support** (PR #50, closes #39): When `OPENCODE_SERVER_PASSWORD` (and optionally `OPENCODE_SERVER_USERNAME`) is set in the bot's environment, the credentials are automatically forwarded as HTTP Basic auth on every internal request to the local `opencode serve` process: session HTTP calls, the SSE `/event` stream, and readiness probes. Behavior is unchanged when the env vars are not set. Misconfigured credentials surface a clear actionable error instead of a vague connection failure. This is optional hardening / compatibility with upstream opencode auth, not a replacement for the Discord allowlist.
+- **`/autocode` command** (PR #54): Added a per-project toggle that automatically enables passthrough mode for new `/work` and `/opencode` threads, so plain messages are sent to OpenCode without needing `/code` first.
 
 ### Changed
 
-- **CLI Robustness**: Consolidated default actions in the CLI to improve first-time user experience.
+- **Optional `/work` description** (PR #56): `/work` can now be run without a description. When omitted or blank, the branch name is used as the default thread description.
+- **Thread channel access docs** (PR #52): Clarified Discord channel access requirements for threads in the README.
 
-## [1.2.0] - 2026-02-05
+## [1.5.2] - 2026-04-05
 
 ### Added
 
-- **Standalone Executable**: Added support for building a single, standalone `.exe` (for Windows) or binary (for Linux/macOS) using Node.js SEA (Single Executable Applications). Users can now run the bot without having Node.js installed.
-- **New `/diff` Command**: Added a slash command to view current git changes in the project or active worktree directly from Discord. Supports optional `--staged` flag.
-- **Build System**: Added `scripts/build-sea.js` to automate the process of bundling, SEA blob generation, and binary injection.
-- **Node 24 Support**: Verified compatibility and optimized the codebase for Node.js 24.
+- **`remote-opencode undeploy` CLI Command** (PR #48): Added a new CLI command to remove the bot's slash commands from the configured Discord guild. This makes it easier to cleanly unregister commands during teardown, testing, or bot reconfiguration.
 
-### Changed
+## [1.5.1] - 2026-03-24
 
-- **Modernized Dependencies**: Upgraded `discord.js` to `v14.25.1`, `commander` to `v14.0.3`, and `open` to `v11.0.0`.
-- **Improved SEA Compatibility**: Added runtime shims for `import.meta.url` and `require` to support modern ESM packages in a bundled environment.
-- **Noise Reduction**: Implemented custom warning suppression to silence Node.js SEA-specific native warnings on startup.
+### Added
+
+- **Proxy Support**: HTTP proxy environments are now supported for Discord and other external API requests via `HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`, and `NO_PROXY` environment variables. Local `opencode serve` traffic on `localhost`, `127.0.0.1`, and `::1` is automatically excluded from proxying.
 
 ### Fixed
 
-- **Security Hardening**: Fixed a moderate security vulnerability in `undici` (resource exhaustion) by forcing version `^6.23.0` via dependency overrides.
-- **Cleaned Dependencies**: Removed unused `node-pty` dependency to simplify the build process and reduce binary size.
+- **Shell Spawn Removed** (PR #42): OpenCode is now launched directly instead of through a shell, fixing service-environment failures. Session recovery consolidated so stale runtime sessions are recreated without resetting stored thread metadata.
+- **Silent Error Swallowing** (PR #36, closes #32): Errors in `updateStreamMessage` (Discord message edits) were silently caught, causing AI responses to appear lost while "Done" still displayed. All edit failures now fall back to sending new messages, ensuring users always see output or error details.
+- **Model Provider Prefix** (PR #35): `/model set` no longer strips the provider prefix (e.g., `opencode/minimax-m2.5-free`), which previously caused "Model not found" errors. Carriage returns (`\r`) in model names are now sanitized consistently across storage and prompt submission.
+- **Duplicate README Content** (PR #41): Removed duplicate lines in the README.
 
-## [1.1.1] - 2026-02-05
+### Changed
 
-...
+- **Mermaid Diagram**: Replaced the ASCII "How It Works" diagram with a Mermaid flowchart for better rendering on GitHub.
+
+## [1.5.0] - 2026-03-16
+
+### Added
+
+- **`/session` Command**: Browse and manage OpenCode CLI sessions directly from Discord.
+  - `list`: View all sessions for the current project — merges active server sessions with persisted thread mappings, showing title, session ID, mapped thread, and last-used time.
+  - `attach`: Attach an existing CLI session to the current thread via an interactive dropdown menu. Automatically sets `freshContext: false` to preserve conversation continuity.
+  - `detach`: Disconnect the current session from the thread, cleaning up SSE connections.
+  - `info`: Display detailed session status in a rich embed — session ID, project path, port, alive/dead status, creation time, last used time, and SSE connection state.
+- **Model Autocomplete**: `/model set` now provides real-time autocomplete suggestions as you type, powered by a background-cached model list (30s TTL with async refresh).
+- **Model Cache Pre-warming**: The bot pre-loads the model list on startup so the first `/model set` autocomplete is instant — no cold-start timeout.
+- **Autocomplete Handler**: Added generic autocomplete infrastructure to `interactionHandler.ts` — commands can now export an `autocomplete` method.
+
+### Changed
+
+- **`/model list` Full Display**: Removed the 10-model-per-provider cap. All models are now shown, with automatic message splitting when output exceeds Discord's 2000-character limit.
+- **Model Validation**: `/model set` now validates against a fast in-memory cache instead of a blocking `execSync` call, eliminating interaction timeouts on slow systems.
+
+### Fixed
+
+- **Autocomplete Timeout**: Prevented Discord autocomplete interaction crashes on cold cache by falling back to an empty response when models haven't loaded yet.
+- **Async Cache Refresh**: Model cache now refreshes asynchronously in the background, preventing the 3-second autocomplete deadline from being exceeded on stale cache.
+
+## [1.4.3] - 2026-03-16
+
+### Fixed
+
+- **Session Continuity**: Changed `freshContext` default from `true` to `false` so that conversations within the same Discord thread preserve context by default. Previously, each new message started a fresh session, losing conversation history. Users can still opt into fresh context per thread via `/queue settings fresh_context:True`. (Closes #27)
+
+## [1.4.0] - 2026-03-10
+
+### Added
+
+- **Voice Message Transcription (STT)**: Automatically transcribe Discord voice messages to text using OpenAI Whisper API.
+  - Send voice messages in `/code` passthrough threads — they are transcribed and processed identically to typed text.
+  - 🎙️ reaction indicates transcription in progress; removed on completion.
+  - Voice messages sent while the bot is busy are queued with attachment metadata — STT is deferred until the queue processes them.
+  - **CLI commands**: `remote-opencode voice set <apiKey>`, `voice remove`, `voice status` for managing the OpenAI API key.
+  - **Discord `/voice` command**: `remove` and `status` subcommands (API key setting is CLI-only for security).
+  - **Setup wizard integration**: Optional step to configure OpenAI API key during `remote-opencode setup`.
+  - **API key resolution**: `OPENAI_API_KEY` environment variable takes priority over `config.json`.
+  - Graceful degradation — voice messages are silently ignored when no API key is configured.
+  - Timeout protection: 30s for Discord CDN download, 60s for Whisper API transcription.
+  - File size validation: rejects files exceeding Whisper's 25MB limit before download.
+
+### Changed
+
+- **Queue system**: `QueuedMessage` interface extended with `voiceAttachmentUrl` and `voiceAttachmentSize` fields to support deferred voice transcription.
+- **Message handler**: Refactored to check busy state before STT, with error-tolerant reaction helpers (`safeReact`, `safeRemoveReaction`).
+
+## [1.3.0] - 2026-03-02
+
+### Added
+
+- **`/diff` Command**: View git diffs directly from Discord — ideal for reviewing AI-made changes on mobile.
+  - `target` option: `unstaged` (default), `staged`, or `branch`
+  - `stat` option: show `--stat` summary only instead of full diff
+  - `base` option: specify base branch for `target:branch` diffs (default: `main`)
+  - Inside a worktree thread → diffs the worktree path for that branch
+  - In a regular channel → diffs the channel-bound project path
+  - Output formatted in a `diff` code block; automatically truncated at Discord's 2000-char limit
+
+## [1.2.0] - 2026-02-15
+
+### Added
+
+- **Access Control (Allowlist)**: Restrict bot usage to specific Discord users via a user ID allowlist.
+  - **Setup wizard** (Step 5): Optionally set a bot owner during initial setup.
+  - **CLI commands**: `remote-opencode allow add <userId>`, `remove <userId>`, `list`, and `reset` for managing the allowlist from the terminal.
+  - **Discord `/allow` command**: Authorized users can manage the allowlist directly from Discord (`/allow add`, `/allow remove`, `/allow list`) — only available when at least one user is already on the allowlist.
+  - **Auth guards**: All Discord interactions (slash commands, buttons, passthrough messages) are checked against the allowlist.
+  - Unauthorized users receive an ephemeral "not authorized" message; passthrough messages are silently ignored.
+  - Empty allowlist = unrestricted mode (backward compatible — all server members can use the bot).
+  - Cannot remove the last allowed user via Discord (prevents lockout).
+
+### Security
+
+- Initial allowlist setup **must** be done via the CLI (`remote-opencode allow add`) or the setup wizard (`remote-opencode setup`). The Discord `/allow` command is intentionally disabled when the allowlist is empty to prevent unauthorized users from bootstrapping access.
+- Config directory (`~/.remote-opencode/`) is created with `0700` permissions (owner-only access).
+- Config file (`config.json`) is written with `0600` permissions (owner read/write only).
+- CLI `allow add` validates Discord snowflake format (17-20 digits).
+
+## [1.1.1] - 2026-02-11
+
+### Added
+
+- **Context Header**: All execution messages now display the current branch name and AI model at the top (e.g. `🌿 feature/dark-mode · 🤖 claude-sonnet-4-20250514`).
+- `getCurrentBranch()` utility in `worktreeManager` to resolve the active git branch via `git rev-parse --abbrev-ref HEAD`.
+- `buildContextHeader()` formatter in `messageFormatter` for consistent header rendering.
+
+### Changed
+
+- Replaced inline `(Model: ...)` suffix with a dedicated context header line across all 7 message states (Starting, Waiting, Sending, Running, Done, Error-SSE, Error-catch).
+
+## [1.1.0] - 2026-02-05
+
+### Added
+
+- **Automated Message Queuing**: Added a new system to queue multiple prompts in a thread. If the bot is busy, new messages are automatically queued and processed sequentially.
+- **Fresh Context Mode**: Each queued job can optionally start with a fresh AI conversation context (new session) while maintaining the same code state.
+- **Queue Management**: New `/queue` slash command suite to list, clear, pause, resume, and configure queue settings.
+- **Queue Settings**:
+  - `continue_on_failure`: Toggle whether the queue stops or continues when a job encounters an error.
+  - `fresh_context`: Toggle between persistent conversation memory and fresh starts per job.
+- **Visual Feedback**: The bot now reacts with `📥` when a message is successfully queued via chat.
+
+### Changed
+
+- **Refactored Execution Logic**: Moved core prompt execution to a dedicated `executionService` for better reliability and code reuse.
+- **Hardened Server Binding**: Reverted `opencode serve` to use default `127.0.0.1` binding (previously `0.0.0.0`) and updated port availability checks to match, preventing local network exposure.
+
+## [1.0.11] - 2026-02-04
+
+### Added
+
+- Model confirmation in Discord messages: The bot now displays which model is being used when starting a session.
+- Real-time logging: Added always-on logging for `opencode serve` startup commands, working directories, and process output (stdout/stderr) for easier debugging.
+
+### Fixed
+
+- Fixed `opencode serve` startup failures: The bot now correctly detects when the server fails to start immediately and reports the actual error message to Discord instead of timing out after 30 seconds.
+- Resolved `--model` flag error: Moved model selection from the `opencode serve` command (where it was unsupported) to the prompt API.
+- Fixed Model API format: Correctly formatted model identifiers as objects (`{ providerID, modelID }`) as required by the OpenCode API.
+- Improved Port Management: Fixed port availability checks to bind to `0.0.0.0` (matching the server) and added checks for orphaned servers to prevent "Address already in use" errors.
+- Fixed button handlers (Interrupt, Create PR) to correctly respect channel model preferences.
+- Fixed instance key logic to include the model, allowing multiple models to be used for the same project in different channels.
+
+## [1.0.10] - 2026-02-04
+
+### Added
+
+- New `/setports` slash command to configure the port range for OpenCode server instances.
+
+### Fixed
+
+- Fixed Windows-specific spawning issue where the bot failed to find the `opencode` command (now targeting `opencode.cmd`).
+- Resolved `spawn EINVAL` errors on Windows by correctly configuring shell execution.
+- Fixed a crash where the bot would attempt to pass an unsupported `--model` flag to `opencode serve`.
+- Improved server reliability by extending the ready-check timeout to 30 seconds.
+- Suppressed `DEP0190` security warnings in the terminal caused by Windows-specific shell execution requirements.
+- Standardized internal communication to use `127.0.0.1` and added real-time process logging (available via `DEBUG` env var).
+
+## [1.0.9] - 2026-02-04
+
+### Added
+
+- New `/model` slash command to list and set AI models per channel.
+- Support for `--model` flag in OpenCode server instances.
+- Persistent storage for channel-specific model preferences.
+
+### Fixed
+
+- Fixed a connection timeout issue where the bot failed to connect to the internal `opencode serve` process.
+- Added `--hostname 0.0.0.0` to the `opencode serve` command to ensure the service is reachable.
+- Standardized internal communication to use `127.0.0.1` instead of `localhost` to avoid IPv6 resolution conflicts on some systems.
+- Improved process exit handling in `serveManager` to ensure cleaner state management.
+- Fixed `DiscordAPIError[40060]` (Interaction already acknowledged) by adding safety checks and better error handling in `interactionHandler.ts`.
+- Resolved a `TypeError` in `opencode.ts` by adding safety checks for stream message updates.
+- Updated all interaction responses to use `MessageFlags.Ephemeral` instead of the deprecated `ephemeral` property to resolve terminal warnings.

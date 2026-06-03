@@ -26,24 +26,32 @@ const MockEventSource = EventSource as unknown as ReturnType<typeof vi.fn>;
 
 describe('SSEClient', () => {
   let client: SSEClient;
+  const originalPassword = process.env.OPENCODE_SERVER_PASSWORD;
+  const originalUsername = process.env.OPENCODE_SERVER_USERNAME;
 
   beforeEach(() => {
     mockEventSourceInstance.addEventListener = vi.fn();
     mockEventSourceInstance.close = vi.fn();
     mockEventSourceInstance.readyState = 1;
     MockEventSource.mockClear();
+    delete process.env.OPENCODE_SERVER_PASSWORD;
+    delete process.env.OPENCODE_SERVER_USERNAME;
     client = new SSEClient();
   });
 
   afterEach(() => {
     client.disconnect();
+    if (originalPassword === undefined) delete process.env.OPENCODE_SERVER_PASSWORD;
+    else process.env.OPENCODE_SERVER_PASSWORD = originalPassword;
+    if (originalUsername === undefined) delete process.env.OPENCODE_SERVER_USERNAME;
+    else process.env.OPENCODE_SERVER_USERNAME = originalUsername;
   });
 
   describe('connect', () => {
     it('should connect to SSE endpoint', () => {
       client.connect('http://127.0.0.1:3000');
 
-      expect(MockEventSource).toHaveBeenCalledWith('http://127.0.0.1:3000/event');
+      expect(MockEventSource).toHaveBeenCalledWith('http://127.0.0.1:3000/event', undefined);
     });
 
     it('should set up message event listener', () => {
@@ -196,6 +204,124 @@ describe('SSEClient', () => {
     });
   });
 
+  describe('onSessionError', () => {
+    it('should trigger callback for session.error events with ProviderAuthError', () => {
+      const callback = vi.fn();
+      client.connect('http://127.0.0.1:3000');
+      client.onSessionError(callback);
+
+      const messageHandler = mockEventSourceInstance.addEventListener.mock.calls.find(
+        (call: any) => call[0] === 'message',
+      )?.[1];
+
+      const event = {
+        data: JSON.stringify({
+          type: 'session.error',
+          properties: {
+            sessionID: 'session-1',
+            error: {
+              name: 'ProviderAuthError',
+              data: {
+                message: 'Invalid model ID',
+                providerID: 'ollama',
+              },
+            },
+          },
+        }),
+      };
+
+      messageHandler(event);
+
+      expect(callback).toHaveBeenCalledWith('session-1', {
+        name: 'ProviderAuthError',
+        data: {
+          message: 'Invalid model ID',
+          providerID: 'ollama',
+        },
+      });
+    });
+
+    it('should trigger callback for session.error events with UnknownError', () => {
+      const callback = vi.fn();
+      client.connect('http://127.0.0.1:3000');
+      client.onSessionError(callback);
+
+      const messageHandler = mockEventSourceInstance.addEventListener.mock.calls.find(
+        (call: any) => call[0] === 'message',
+      )?.[1];
+
+      const event = {
+        data: JSON.stringify({
+          type: 'session.error',
+          properties: {
+            sessionID: 'session-2',
+            error: {
+              name: 'UnknownError',
+              data: {
+                message: 'Rate limit exceeded',
+              },
+            },
+          },
+        }),
+      };
+
+      messageHandler(event);
+
+      expect(callback).toHaveBeenCalledWith('session-2', {
+        name: 'UnknownError',
+        data: {
+          message: 'Rate limit exceeded',
+        },
+      });
+    });
+
+    it('should not trigger callback when error property is missing', () => {
+      const callback = vi.fn();
+      client.connect('http://127.0.0.1:3000');
+      client.onSessionError(callback);
+
+      const messageHandler = mockEventSourceInstance.addEventListener.mock.calls.find(
+        (call: any) => call[0] === 'message',
+      )?.[1];
+
+      const event = {
+        data: JSON.stringify({
+          type: 'session.error',
+          properties: {
+            sessionID: 'session-1',
+          },
+        }),
+      };
+
+      messageHandler(event);
+
+      expect(callback).not.toHaveBeenCalled();
+    });
+
+    it('should not trigger callback for non-error events', () => {
+      const callback = vi.fn();
+      client.connect('http://127.0.0.1:3000');
+      client.onSessionError(callback);
+
+      const messageHandler = mockEventSourceInstance.addEventListener.mock.calls.find(
+        (call: any) => call[0] === 'message',
+      )?.[1];
+
+      const event = {
+        data: JSON.stringify({
+          type: 'session.idle',
+          properties: {
+            sessionID: 'session-1',
+          },
+        }),
+      };
+
+      messageHandler(event);
+
+      expect(callback).not.toHaveBeenCalled();
+    });
+  });
+
   describe('onError', () => {
     it('should trigger callback on error', () => {
       const callback = vi.fn();
@@ -243,6 +369,53 @@ describe('SSEClient', () => {
 
     it('should return false when not initialized', () => {
       expect(client.isConnected()).toBe(false);
+    });
+  });
+
+  describe('OPENCODE_SERVER_PASSWORD auth', () => {
+    it('does not pass a custom fetch when password is unset (current behavior)', () => {
+      client.connect('http://127.0.0.1:3000');
+
+      expect(MockEventSource).toHaveBeenCalledWith('http://127.0.0.1:3000/event', undefined);
+    });
+
+    it('injects a Basic Authorization header via custom fetch when password is set', async () => {
+      process.env.OPENCODE_SERVER_PASSWORD = 's3cret';
+
+      client.connect('http://127.0.0.1:3000');
+
+      expect(MockEventSource).toHaveBeenCalledWith(
+        'http://127.0.0.1:3000/event',
+        expect.objectContaining({ fetch: expect.any(Function) }),
+      );
+
+      // Verify the injected fetch actually forwards the Authorization header.
+      const [, init] = MockEventSource.mock.calls[0] as [string, { fetch: typeof fetch }];
+      const underlyingFetch = vi.fn().mockResolvedValue({ ok: true } as Response);
+      vi.stubGlobal('fetch', underlyingFetch);
+      await init.fetch('http://127.0.0.1:3000/event', { method: 'GET' });
+      vi.unstubAllGlobals();
+
+      const expected = `Basic ${Buffer.from('opencode:s3cret').toString('base64')}`;
+      const call = underlyingFetch.mock.calls[0] as [string, RequestInit];
+      expect((call[1].headers as Record<string, string>).Authorization).toBe(expected);
+    });
+
+    it('uses OPENCODE_SERVER_USERNAME in the Basic token when provided', async () => {
+      process.env.OPENCODE_SERVER_PASSWORD = 's3cret';
+      process.env.OPENCODE_SERVER_USERNAME = 'alice';
+
+      client.connect('http://127.0.0.1:3000');
+
+      const [, init] = MockEventSource.mock.calls[0] as [string, { fetch: typeof fetch }];
+      const underlyingFetch = vi.fn().mockResolvedValue({ ok: true } as Response);
+      vi.stubGlobal('fetch', underlyingFetch);
+      await init.fetch('http://127.0.0.1:3000/event', {});
+      vi.unstubAllGlobals();
+
+      const expected = `Basic ${Buffer.from('alice:s3cret').toString('base64')}`;
+      const call = underlyingFetch.mock.calls[0] as [string, RequestInit];
+      expect((call[1].headers as Record<string, string>).Authorization).toBe(expected);
     });
   });
 });

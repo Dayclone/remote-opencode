@@ -22,13 +22,17 @@ export const work: Command = {
       option.setName('branch').setDescription('Branch name').setRequired(true),
     )
     .addStringOption((option) =>
-      option.setName('description').setDescription('Description of the work').setRequired(true),
+      option
+        .setName('description')
+        .setDescription('Description of the work (defaults to branch name)')
+        .setRequired(false),
     ) as SlashCommandBuilder,
 
   execute: async (interaction: any) => {
     const i = interaction as ChatInputCommandInteraction;
     const branchInput = i.options.getString('branch', true);
-    const description = i.options.getString('description', true);
+    const sanitizedBranch = worktreeManager.sanitizeBranchName(branchInput);
+    const description = i.options.getString('description')?.trim() || sanitizedBranch;
 
     const channel = i.channel;
     if (!channel) {
@@ -61,8 +65,6 @@ export const work: Command = {
       return;
     }
 
-    const sanitizedBranch = worktreeManager.sanitizeBranchName(branchInput);
-
     const existingMapping = dataStore.getWorktreeMappingByBranch(projectPath, sanitizedBranch);
     if (existingMapping) {
       await i.reply({
@@ -72,6 +74,7 @@ export const work: Command = {
       return;
     }
 
+    await i.deferReply({ flags: MessageFlags.Ephemeral });
     try {
       const worktreePath = await worktreeManager.createWorktree(projectPath, sanitizedBranch);
 
@@ -92,6 +95,11 @@ export const work: Command = {
         description: description,
         createdAt: Date.now(),
       });
+
+      const alias = dataStore.getChannelBinding(i.channelId);
+      if (alias && dataStore.getProjectAutoPassthrough(alias)) {
+        dataStore.setPassthroughMode(thread.id, true, i.user.id);
+      }
 
       const embed = new EmbedBuilder()
         .setTitle(`🌳 Worktree: ${sanitizedBranch}`)
@@ -119,15 +127,13 @@ export const work: Command = {
         components: [buttons],
       });
 
-      await i.reply({
+      await i.editReply({
         content: `✅ Created worktree **${sanitizedBranch}** -> <#${thread.id}>`,
-        flags: MessageFlags.Ephemeral,
       });
     } catch (error) {
       console.error('Worktree creation failed:', error);
-      await i.reply({
+      await i.editReply({
         content: `❌ Failed to create worktree: ${(error as Error).message}`,
-        flags: MessageFlags.Ephemeral,
       });
     }
   },

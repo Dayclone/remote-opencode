@@ -1,7 +1,13 @@
 import * as p from '@clack/prompts';
 import pc from 'picocolors';
 import open from 'open';
-import { setBotConfig, getBotConfig, hasBotConfig } from '../services/configStore.js';
+import {
+  setBotConfig,
+  getBotConfig,
+  hasBotConfig,
+  addAllowedUserId,
+  setOpenAIApiKey,
+} from '../services/configStore.js';
 import { deployCommands } from './deploy.js';
 
 const DISCORD_DEV_URL = 'https://discord.com/developers/applications';
@@ -22,6 +28,12 @@ function validateToken(value: string | undefined): string | undefined {
 
 function validateGuildId(value: string | undefined): string | undefined {
   if (!value) return 'Guild ID is required';
+  if (!/^\d{17,20}$/.test(value)) return 'Invalid format (should be 17-20 digits)';
+  return undefined;
+}
+
+function validateUserId(value: string | undefined): string | undefined {
+  if (!value) return undefined;
   if (!/^\d{17,20}$/.test(value)) return 'Invalid format (should be 17-20 digits)';
   return undefined;
 }
@@ -154,6 +166,28 @@ export async function runSetupWizard(): Promise<void> {
     process.exit(0);
   }
 
+  // Step 5: Set Bot Owner
+  p.note(
+    `Restrict who can use this bot by setting an owner.\n\n` +
+      `1. In Discord, right-click ${pc.bold('YOUR profile')}\n` +
+      `2. Click ${pc.bold('"Copy User ID"')}\n\n` +
+      `${pc.dim('(Requires Developer Mode — same setting as Step 4)')}\n` +
+      `${pc.dim('Leave blank to allow everyone)')}`,
+    'Step 5: Set Bot Owner (Optional)',
+  );
+
+  const ownerId = await p.text({
+    message: 'Enter your Discord User ID (leave blank to allow everyone):',
+    placeholder: 'e.g., 1234567890123456789',
+    defaultValue: '',
+    validate: validateUserId,
+  });
+
+  if (p.isCancel(ownerId)) {
+    p.cancel('Setup cancelled.');
+    process.exit(0);
+  }
+
   // Save configuration
   const s = p.spinner();
   s.start('Saving configuration...');
@@ -166,7 +200,42 @@ export async function runSetupWizard(): Promise<void> {
 
   s.stop('Configuration saved!');
 
-  // Step 5: Invite Bot to Server
+  if (ownerId && (ownerId as string).length > 0) {
+    addAllowedUserId(ownerId as string);
+  }
+
+  // Step 6 (optional): Voice Message Transcription
+  const enableVoice = await p.confirm({
+    message: 'Would you like to enable Voice Message transcription? (requires OpenAI API key)',
+    initialValue: false,
+  });
+
+  if (p.isCancel(enableVoice)) {
+    p.cancel('Setup cancelled.');
+    process.exit(0);
+  }
+
+  if (enableVoice) {
+    const openaiKey = await p.password({
+      message: 'Enter your OpenAI API key:',
+      validate: (value) => {
+        if (!value) return 'API key is required';
+        if (!value.startsWith('sk-') || value.length < 20)
+          return 'Invalid API key format (must start with sk- and be at least 20 characters)';
+        return undefined;
+      },
+    });
+
+    if (p.isCancel(openaiKey)) {
+      p.cancel('Setup cancelled.');
+      process.exit(0);
+    }
+
+    setOpenAIApiKey(openaiKey as string);
+    p.log.success('OpenAI API key saved. Voice transcription enabled!');
+  }
+
+  // Step 6: Invite Bot to Server
   const inviteUrl = generateInviteUrl(clientId as string);
 
   p.note(
@@ -174,7 +243,7 @@ export async function runSetupWizard(): Promise<void> {
       `1. Select your server\n` +
       `2. Click ${pc.bold('"Authorize"')}\n\n` +
       `${pc.dim('URL: ' + inviteUrl)}`,
-    'Step 5: Invite Bot to Server',
+    'Step 6: Invite Bot to Server',
   );
 
   const openInvite = await p.text({
@@ -200,7 +269,7 @@ export async function runSetupWizard(): Promise<void> {
     process.exit(0);
   }
 
-  // Step 6: Deploy Commands
+  // Step 7: Deploy Commands
   const shouldDeploy = await p.confirm({
     message: 'Deploy slash commands now?',
     initialValue: true,

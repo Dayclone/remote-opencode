@@ -1,57 +1,123 @@
-import { ChatInputCommandInteraction, SlashCommandBuilder } from 'discord.js';
-import { exec } from 'node:child_process';
+import { SlashCommandBuilder, ChatInputCommandInteraction, MessageFlags } from 'discord.js';
+import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
-import { getChannelProjectPath } from '../services/dataStore.js';
-import { getWorktreeMapping } from '../services/dataStore.js';
+import * as dataStore from '../services/dataStore.js';
+import type { Command } from './index.js';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
-export const diff = {
+const MAX_LENGTH = 1900;
+const CODE_BLOCK_OVERHEAD = 8; // ```diff\n...\n```
+const GIT_REF_PATTERN = /^[a-zA-Z0-9._/-]+$/;
+
+function formatDiff(raw: string): string {
+  const maxContent = MAX_LENGTH - CODE_BLOCK_OVERHEAD;
+
+  if (raw.length <= maxContent) {
+    return '```diff\n' + raw + '\n```';
+  }
+
+  const truncated = '...(truncated)...\n\n' + raw.slice(-maxContent + 20);
+  return '```diff\n' + truncated + '\n```';
+}
+
+export const diff: Command = {
   data: new SlashCommandBuilder()
     .setName('diff')
-    .setDescription('Show current changes in the project')
+    .setDescription('Show git diff for the current project')
+    .addStringOption((option) =>
+      option
+        .setName('target')
+        .setDescription('What to diff: unstaged (default), staged, or branch')
+        .setRequired(false)
+        .addChoices(
+          { name: 'unstaged', value: 'unstaged' },
+          { name: 'staged', value: 'staged' },
+          { name: 'branch', value: 'branch' },
+        ),
+    )
     .addBooleanOption((option) =>
-      option.setName('staged').setDescription('Show only staged changes').setRequired(false),
-    ),
+      option.setName('stat').setDescription('Show summary stats only (--stat)').setRequired(false),
+    )
+    .addStringOption((option) =>
+      option
+        .setName('base')
+        .setDescription('Base branch for branch diff (default: main)')
+        .setRequired(false),
+    ) as SlashCommandBuilder,
 
-  async execute(interaction: ChatInputCommandInteraction) {
-    await interaction.deferReply();
+  execute: async (interaction: any) => {
+    const i = interaction as ChatInputCommandInteraction;
+    const target = i.options.getString('target') ?? 'unstaged';
+    const stat = i.options.getBoolean('stat') ?? false;
+    const base = i.options.getString('base') ?? 'main';
 
-    const threadId = interaction.channelId;
-    const parentChannelId = (interaction.channel as any)?.parentId || threadId;
-
-    const worktreeMapping = getWorktreeMapping(threadId);
-    const projectPath = worktreeMapping?.worktreePath || getChannelProjectPath(parentChannelId);
-
-    if (!projectPath) {
-      await interaction.editReply('❌ No project bound to this channel.');
+    const channel = i.channel;
+    if (!channel) {
+      await i.reply({ content: '❌ Unknown channel.', flags: MessageFlags.Ephemeral });
       return;
     }
 
-    const showStaged = interaction.options.getBoolean('staged') ?? false;
-    const gitCmd = showStaged ? 'git diff --staged' : 'git diff HEAD';
+    // Resolve project path: worktree thread takes priority
+    let projectPath: string | undefined;
+    if (channel.isThread()) {
+      const mapping = dataStore.getWorktreeMapping(i.channelId);
+      if (mapping) {
+        projectPath = mapping.worktreePath;
+      } else {
+        const parentId = (channel as any).parentId;
+        if (parentId) {
+          projectPath = dataStore.getChannelProjectPath(parentId);
+        }
+      }
+    } else {
+      projectPath = dataStore.getChannelProjectPath(i.channelId);
+    }
+
+    if (!projectPath) {
+      await i.reply({
+        content: '❌ No project bound to this channel. Use `/setpath` and `/use` first.',
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    if (target === 'branch' && !GIT_REF_PATTERN.test(base)) {
+      await i.reply({ content: '❌ Invalid base branch name.', flags: MessageFlags.Ephemeral });
+      return;
+    }
+
+    await i.deferReply();
 
     try {
-      const { stdout } = await execAsync(gitCmd, { cwd: projectPath });
+      let gitArgs: string[];
+      switch (target) {
+        case 'staged':
+          gitArgs = ['diff', '--cached'];
+          break;
+        case 'branch':
+          gitArgs = ['diff', `${base}...HEAD`];
+          break;
+        default:
+          gitArgs = ['diff'];
+      }
 
-      if (!stdout || stdout.trim().length === 0) {
-        await interaction.editReply('✅ No changes found.');
+      if (stat) {
+        gitArgs.push('--stat');
+      }
+
+      const { stdout } = await execFileAsync('git', gitArgs, { cwd: projectPath });
+      const output = stdout.trim();
+
+      if (!output) {
+        const targetLabel = target === 'branch' ? `branch (base: ${base})` : target;
+        await i.editReply(`✅ No ${targetLabel} changes.`);
         return;
       }
 
-      // Truncate if too long for Discord (2000 chars total, leave room for formatting)
-      let output = stdout.trim();
-      const maxLength = 1900;
-      if (output.length > maxLength) {
-        output = output.slice(0, maxLength) + '\n... (truncated)';
-      }
-
-      await interaction.editReply(`\`\`\`diff\n${output}\n\`\`\``);
+      await i.editReply(formatDiff(output));
     } catch (error) {
-      console.error('Diff error:', error);
-      await interaction.editReply(
-        `❌ Failed to get diff: ${error instanceof Error ? error.message : 'Unknown error'}`,
-      );
+      await i.editReply(`❌ Failed to get diff: ${(error as Error).message}`);
     }
   },
 };

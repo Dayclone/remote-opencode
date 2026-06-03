@@ -1,17 +1,24 @@
 import type { SSEClient } from './sseClient.js';
 import * as dataStore from './dataStore.js';
+import { sanitizeModel } from '../utils/stringUtils.js';
+import { getAuthHeaders, assertNotAuthError } from './serverAuth.js';
 
 const threadSseClients = new Map<string, SSEClient>();
+
+function jsonHeaders(): Record<string, string> {
+  return { 'Content-Type': 'application/json', ...getAuthHeaders() };
+}
 
 export async function createSession(port: number): Promise<string> {
   const url = `http://127.0.0.1:${port}/session`;
   const response = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: jsonHeaders(),
     body: '{}',
   });
 
   if (!response.ok) {
+    assertNotAuthError(response.status, 'Failed to create session');
     throw new Error(`Failed to create session: ${response.status} ${response.statusText}`);
   }
 
@@ -25,13 +32,14 @@ export async function createSession(port: number): Promise<string> {
 }
 
 function parseModelString(model: string): { providerID: string; modelID: string } | null {
-  const slashIndex = model.indexOf('/');
+  const clean = sanitizeModel(model);
+  const slashIndex = clean.indexOf('/');
   if (slashIndex === -1) {
     return null;
   }
   return {
-    providerID: model.slice(0, slashIndex),
-    modelID: model.slice(slashIndex + 1),
+    providerID: clean.slice(0, slashIndex),
+    modelID: clean.slice(slashIndex + 1),
   };
 }
 
@@ -50,7 +58,8 @@ export async function sendPrompt(
   };
 
   if (model) {
-    const parsedModel = parseModelString(model);
+    const cleanModel = sanitizeModel(model);
+    const parsedModel = parseModelString(cleanModel);
     if (parsedModel) {
       body.model = parsedModel;
     }
@@ -58,60 +67,105 @@ export async function sendPrompt(
 
   const response = await fetch(url, {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: jsonHeaders(),
     body: JSON.stringify(body),
   });
 
   if (!response.ok) {
-    throw new Error(`Failed to send prompt: ${response.status} ${response.statusText}`);
+    const responseBody = await response.text();
+    assertNotAuthError(response.status, 'Failed to send prompt');
+    throw new Error(
+      `Failed to send prompt: ${response.status} ${response.statusText} — ${responseBody}`,
+    );
   }
 }
 
 export async function validateSession(port: number, sessionId: string): Promise<boolean> {
+  const url = `http://127.0.0.1:${port}/session/${sessionId}`;
+  let response: Response;
   try {
-    const url = `http://127.0.0.1:${port}/session/${sessionId}`;
-    const response = await fetch(url, {
+    response = await fetch(url, {
       method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
+      headers: jsonHeaders(),
     });
-    return response.ok;
   } catch {
     return false;
   }
+
+  if (!response.ok) {
+    assertNotAuthError(response.status, 'Failed to validate session');
+  }
+  return response.ok;
 }
 
-export async function listSessions(port: number): Promise<string[]> {
+export async function getSessionInfo(port: number, sessionId: string): Promise<SessionInfo | null> {
+  const url = `http://127.0.0.1:${port}/session/${sessionId}`;
+  let response: Response;
   try {
-    const url = `http://127.0.0.1:${port}/session`;
-    const response = await fetch(url, {
+    response = await fetch(url, {
       method: 'GET',
-      headers: { 'Content-Type': 'application/json' },
+      headers: jsonHeaders(),
     });
+  } catch {
+    return null;
+  }
 
-    if (!response.ok) {
-      return [];
-    }
+  if (!response.ok) {
+    assertNotAuthError(response.status, 'Failed to get session info');
+    return null;
+  }
+  const data = await response.json();
+  return { id: data.id, title: data.title ?? '' };
+}
 
-    const data = await response.json();
-    if (Array.isArray(data)) {
-      return data.map((s: { id: string }) => s.id);
-    }
-    return [];
+export interface SessionInfo {
+  id: string;
+  title: string;
+}
+
+export async function listSessions(port: number): Promise<SessionInfo[]> {
+  const url = `http://127.0.0.1:${port}/session`;
+  let response: Response;
+  try {
+    response = await fetch(url, {
+      method: 'GET',
+      headers: jsonHeaders(),
+    });
   } catch {
     return [];
   }
+
+  if (!response.ok) {
+    assertNotAuthError(response.status, 'Failed to list sessions');
+    return [];
+  }
+
+  const data = await response.json();
+  if (Array.isArray(data)) {
+    return data.map((s: { id: string; title?: string }) => ({
+      id: s.id,
+      title: s.title ?? '',
+    }));
+  }
+  return [];
 }
 
 export async function abortSession(port: number, sessionId: string): Promise<boolean> {
+  const url = `http://127.0.0.1:${port}/session/${sessionId}/abort`;
+  let response: Response;
   try {
-    const url = `http://127.0.0.1:${port}/session/${sessionId}/abort`;
-    const response = await fetch(url, {
+    response = await fetch(url, {
       method: 'POST',
+      headers: getAuthHeaders(),
     });
-    return response.ok;
   } catch {
     return false;
   }
+
+  if (!response.ok) {
+    assertNotAuthError(response.status, 'Failed to abort session');
+  }
+  return response.ok;
 }
 
 export function getSessionForThread(
@@ -119,7 +173,11 @@ export function getSessionForThread(
 ): { sessionId: string; projectPath: string; port: number } | undefined {
   const session = dataStore.getThreadSession(threadId);
   if (!session) return undefined;
-  return { sessionId: session.sessionId, projectPath: session.projectPath, port: session.port };
+  return {
+    sessionId: session.sessionId,
+    projectPath: session.projectPath,
+    port: session.port,
+  };
 }
 
 export function setSessionForThread(
@@ -128,15 +186,36 @@ export function setSessionForThread(
   projectPath: string,
   port: number,
 ): void {
+  const existing = dataStore.getThreadSession(threadId);
   const now = Date.now();
   dataStore.setThreadSession({
     threadId,
     sessionId,
     projectPath,
     port,
-    createdAt: now,
+    createdAt: existing?.createdAt ?? now,
     lastUsedAt: now,
   });
+}
+
+export async function ensureSessionForThread(
+  threadId: string,
+  projectPath: string,
+  port: number,
+): Promise<string> {
+  const existingSession = getSessionForThread(threadId);
+
+  if (existingSession && existingSession.projectPath === projectPath) {
+    const isValid = await validateSession(port, existingSession.sessionId);
+    if (isValid) {
+      setSessionForThread(threadId, existingSession.sessionId, projectPath, port);
+      return existingSession.sessionId;
+    }
+  }
+
+  const sessionId = await createSession(port);
+  setSessionForThread(threadId, sessionId, projectPath, port);
+  return sessionId;
 }
 
 export function updateSessionLastUsed(threadId: string): void {

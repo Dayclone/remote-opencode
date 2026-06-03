@@ -5,6 +5,7 @@ import {
   accumulateText,
   formatOutput,
   stripAnsi,
+  buildContextHeader,
 } from '../utils/messageFormatter.js';
 
 describe('messageFormatter', () => {
@@ -77,6 +78,23 @@ describe('messageFormatter', () => {
 
     it('should handle empty current text', () => {
       expect(accumulateText('', 'Hello')).toBe('Hello');
+    });
+  });
+
+  describe('buildContextHeader', () => {
+    it('should format branch name and model name', () => {
+      const result = buildContextHeader('feature/dark-mode', 'claude-sonnet-4-20250514');
+      expect(result).toBe('🌿 `feature/dark-mode` · 🤖 `claude-sonnet-4-20250514`');
+    });
+
+    it('should handle default model', () => {
+      const result = buildContextHeader('main', 'default');
+      expect(result).toBe('🌿 `main` · 🤖 `default`');
+    });
+
+    it('should handle auto-generated branch names', () => {
+      const result = buildContextHeader('auto/abc12345-1738600000000', 'default');
+      expect(result).toBe('🌿 `auto/abc12345-1738600000000` · 🤖 `default`');
     });
   });
 

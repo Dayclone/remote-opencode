@@ -1,9 +1,9 @@
-import { exec } from 'node:child_process';
+import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
 
 export function sanitizeBranchName(name: string): string {
   return name
@@ -19,12 +19,12 @@ export async function branchExists(
 ): Promise<{ local: boolean; remote: boolean }> {
   try {
     const [localRes, remoteRes] = await Promise.all([
-      execAsync(`git branch --list ${branchName}`, { cwd: projectPath }).catch(() => ({
+      execFileAsync('git', ['branch', '--list', branchName], { cwd: projectPath }).catch(() => ({
         stdout: '',
       })),
-      execAsync(`git branch -r --list origin/${branchName}`, { cwd: projectPath }).catch(() => ({
-        stdout: '',
-      })),
+      execFileAsync('git', ['branch', '-r', '--list', `origin/${branchName}`], {
+        cwd: projectPath,
+      }).catch(() => ({ stdout: '' })),
     ]);
 
     return {
@@ -46,13 +46,21 @@ export async function createWorktree(projectPath: string, branchName: string): P
 
   try {
     if (local || remote) {
-      await execAsync(`git worktree add ./worktrees/${sanitizedBranch} ${sanitizedBranch}`, {
-        cwd: projectPath,
-      });
+      await execFileAsync(
+        'git',
+        ['worktree', 'add', `./worktrees/${sanitizedBranch}`, sanitizedBranch],
+        {
+          cwd: projectPath,
+        },
+      );
     } else {
-      await execAsync(`git worktree add ./worktrees/${sanitizedBranch} -b ${sanitizedBranch}`, {
-        cwd: projectPath,
-      });
+      await execFileAsync(
+        'git',
+        ['worktree', 'add', `./worktrees/${sanitizedBranch}`, '-b', sanitizedBranch],
+        {
+          cwd: projectPath,
+        },
+      );
     }
 
     return absolutePath;
@@ -66,20 +74,33 @@ export async function removeWorktree(worktreePath: string, deleteBranch?: boolea
   try {
     let branchName: string | undefined;
     if (deleteBranch) {
-      const { stdout } = await execAsync('git branch --show-current', { cwd: worktreePath });
+      const { stdout } = await execFileAsync('git', ['branch', '--show-current'], {
+        cwd: worktreePath,
+      });
       branchName = stdout.trim();
     }
 
     const projectPath = resolve(worktreePath, '..', '..');
 
-    await execAsync(`git worktree remove "${worktreePath}" --force`, { cwd: projectPath });
+    await execFileAsync('git', ['worktree', 'remove', worktreePath, '--force'], {
+      cwd: projectPath,
+    });
 
     if (deleteBranch && branchName) {
-      await execAsync(`git branch -D ${branchName}`, { cwd: projectPath });
+      await execFileAsync('git', ['branch', '-D', branchName], { cwd: projectPath });
     }
   } catch (error) {
     console.error('Error removing worktree:', error);
     throw new Error(`Failed to remove worktree: ${(error as Error).message}`);
+  }
+}
+
+export async function getCurrentBranch(cwd: string): Promise<string | null> {
+  try {
+    const { stdout } = await execFileAsync('git', ['rev-parse', '--abbrev-ref', 'HEAD'], { cwd });
+    return stdout.trim() || null;
+  } catch {
+    return null;
   }
 }
 

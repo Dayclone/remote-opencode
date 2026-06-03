@@ -11,7 +11,11 @@ import * as sessionManager from './sessionManager.js';
 import * as serveManager from './serveManager.js';
 import * as worktreeManager from './worktreeManager.js';
 import { SSEClient } from './sseClient.js';
-import { formatOutput } from '../utils/messageFormatter.js';
+import {
+  formatOutput,
+  formatOutputForMobile,
+  buildContextHeader,
+} from '../utils/messageFormatter.js';
 import { processNextInQueue } from './queueManager.js';
 
 export async function runPrompt(
@@ -78,7 +82,13 @@ export async function runPrompt(
 
   const effectivePath = worktreeMapping?.worktreePath ?? projectPath;
   const preferredModel = dataStore.getChannelModel(parentChannelId);
-  const modelDisplay = preferredModel ? `\`${preferredModel}\`` : 'default';
+  const modelDisplay = preferredModel ? `${preferredModel}` : 'default';
+
+  const branchName =
+    worktreeMapping?.branchName ??
+    (await worktreeManager.getCurrentBranch(effectivePath)) ??
+    'main';
+  const contextHeader = buildContextHeader(branchName, modelDisplay);
 
   const buttons = new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
@@ -90,7 +100,7 @@ export async function runPrompt(
   let streamMessage: Message;
   try {
     streamMessage = await (channel as any).send({
-      content: `📌 **Prompt**: ${prompt}\n\n🚀 Starting OpenCode server... (Model: ${modelDisplay})`,
+      content: `${contextHeader}\n📌 **Prompt**: ${prompt}\n\n🚀 Starting OpenCode server...`,
       components: [buttons],
     });
   } catch {
@@ -103,22 +113,41 @@ export async function runPrompt(
   let accumulatedText = '';
   let lastContent = '';
   let tick = 0;
+  let promptSent = false;
+  let hasSessionError = false;
   const spinner = ['⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'];
 
   const updateStreamMessage = async (
     content: string,
     components: ActionRowBuilder<ButtonBuilder>[],
-  ) => {
+  ): Promise<boolean> => {
     try {
       await streamMessage.edit({ content, components });
-    } catch {}
+      return true;
+    } catch (error) {
+      console.error(
+        'Failed to edit stream message:',
+        error instanceof Error ? error.message : error,
+      );
+      return false;
+    }
+  };
+
+  const safeSend = async (content: string): Promise<boolean> => {
+    try {
+      await (channel as any).send({ content });
+      return true;
+    } catch (error) {
+      console.error('Failed to send message:', error instanceof Error ? error.message : error);
+      return false;
+    }
   };
 
   try {
     port = await serveManager.spawnServe(effectivePath, preferredModel);
 
     await updateStreamMessage(
-      `📌 **Prompt**: ${prompt}\n\n⏳ Waiting for OpenCode server... (Model: ${modelDisplay})`,
+      `${contextHeader}\n📌 **Prompt**: ${prompt}\n\n⏳ Waiting for OpenCode server...`,
       [buttons],
     );
     await serveManager.waitForReady(port, 30000, effectivePath, preferredModel);
@@ -130,30 +159,21 @@ export async function runPrompt(
       sessionManager.clearSessionForThread(threadId);
     }
 
-    const existingSession = sessionManager.getSessionForThread(threadId);
-    if (existingSession && existingSession.projectPath === effectivePath) {
-      const isValid = await sessionManager.validateSession(port, existingSession.sessionId);
-      if (isValid) {
-        sessionId = existingSession.sessionId;
-        sessionManager.updateSessionLastUsed(threadId);
-      } else {
-        sessionId = await sessionManager.createSession(port);
-        sessionManager.setSessionForThread(threadId, sessionId, effectivePath, port);
-      }
-    } else {
-      sessionId = await sessionManager.createSession(port);
-      sessionManager.setSessionForThread(threadId, sessionId, effectivePath, port);
-    }
+    sessionId = await sessionManager.ensureSessionForThread(threadId, effectivePath, port);
 
     const sseClient = new SSEClient();
     sseClient.connect(`http://127.0.0.1:${port}`);
     sessionManager.setSseClient(threadId, sseClient);
 
     sseClient.onPartUpdated((part) => {
+      if (part.sessionID !== sessionId) return;
       accumulatedText = part.text;
     });
 
-    sseClient.onSessionIdle(() => {
+    sseClient.onSessionIdle((idleSessionId) => {
+      if (idleSessionId !== sessionId) return;
+      if (!promptSent) return;
+
       if (updateInterval) {
         clearInterval(updateInterval);
         updateInterval = null;
@@ -161,7 +181,12 @@ export async function runPrompt(
 
       (async () => {
         try {
-          const formatted = formatOutput(accumulatedText);
+          if (hasSessionError) {
+            sseClient.disconnect();
+            sessionManager.clearSseClient(threadId);
+            return;
+          }
+
           const disabledButtons = new ActionRowBuilder<ButtonBuilder>().addComponents(
             new ButtonBuilder()
               .setCustomId(`interrupt_${threadId}`)
@@ -170,20 +195,88 @@ export async function runPrompt(
               .setDisabled(true),
           );
 
-          await updateStreamMessage(`📌 **Prompt**: ${prompt}\n\n\`\`\`\n${formatted}\n\`\`\``, [
-            disabledButtons,
-          ]);
+          if (!accumulatedText.trim()) {
+            const edited = await updateStreamMessage(
+              `${contextHeader}\n📌 **Prompt**: ${prompt}\n\n⚠️ No output received — the model may have encountered an issue.`,
+              [disabledButtons],
+            );
+            if (!edited) {
+              await safeSend('⚠️ No output received — the model may have encountered an issue.');
+            }
+            await safeSend('⚠️ Done (no output received)');
+          } else {
+            const result = formatOutputForMobile(accumulatedText);
 
-          await (channel as any).send({ content: '✅ Done' });
+            const editSuccess = await updateStreamMessage(
+              `${contextHeader}\n📌 **Prompt**: ${prompt}\n\n${result.chunks[0]}`,
+              [disabledButtons],
+            );
+
+            // If edit failed (e.g., content exceeds Discord's 2000-char limit), send all chunks as new messages
+            const startIndex = editSuccess ? 1 : 0;
+            for (let i = startIndex; i < result.chunks.length; i++) {
+              await safeSend(result.chunks[i]);
+            }
+
+            await safeSend('✅ Done');
+          }
 
           sseClient.disconnect();
-
           sessionManager.clearSseClient(threadId);
 
-          // Trigger next in queue
           await processNextInQueue(channel, threadId, parentChannelId);
         } catch (error) {
           console.error('Error in onSessionIdle:', error);
+          await safeSend('❌ An unexpected error occurred while processing the response.');
+        }
+      })();
+    });
+
+    sseClient.onSessionError((errorSessionId, errorInfo) => {
+      if (errorSessionId !== sessionId) return;
+      if (!promptSent) return;
+
+      hasSessionError = true;
+
+      if (updateInterval) {
+        clearInterval(updateInterval);
+        updateInterval = null;
+      }
+
+      (async () => {
+        try {
+          const errorMsg = errorInfo.data?.message || errorInfo.name || 'Unknown error';
+          const disabledButtons = new ActionRowBuilder<ButtonBuilder>().addComponents(
+            new ButtonBuilder()
+              .setCustomId(`interrupt_${threadId}`)
+              .setLabel('⏸️ Interrupt')
+              .setStyle(ButtonStyle.Secondary)
+              .setDisabled(true),
+          );
+
+          const edited = await updateStreamMessage(
+            `${contextHeader}\n📌 **Prompt**: ${prompt}\n\n❌ **Error**: ${errorMsg}`,
+            [disabledButtons],
+          );
+          if (!edited) {
+            await safeSend(`❌ **Error**: ${errorMsg}`);
+          }
+
+          sseClient.disconnect();
+          sessionManager.clearSseClient(threadId);
+
+          const settings = dataStore.getQueueSettings(threadId);
+          if (settings.continueOnFailure) {
+            await processNextInQueue(channel, threadId, parentChannelId);
+          } else {
+            dataStore.clearQueue(threadId);
+            await safeSend(
+              '❌ Execution failed. Queue cleared. Use `/queue settings` to change this behavior.',
+            );
+          }
+        } catch (error) {
+          console.error('Error in onSessionError:', error);
+          await safeSend('❌ An unexpected error occurred while handling a session error.');
         }
       })();
     });
@@ -196,10 +289,13 @@ export async function runPrompt(
 
       (async () => {
         try {
-          await updateStreamMessage(
-            `📌 **Prompt**: ${prompt}\n\n❌ Connection error: ${error.message}`,
+          const edited = await updateStreamMessage(
+            `${contextHeader}\n📌 **Prompt**: ${prompt}\n\n❌ Connection error: ${error.message}`,
             [],
           );
+          if (!edited) {
+            await safeSend(`❌ Connection error: ${error.message}`);
+          }
 
           sseClient.disconnect();
           sessionManager.clearSseClient(threadId);
@@ -209,11 +305,14 @@ export async function runPrompt(
             await processNextInQueue(channel, threadId, parentChannelId);
           } else {
             dataStore.clearQueue(threadId);
-            await (channel as any).send(
+            await safeSend(
               '❌ Execution failed. Queue cleared. Use `/queue settings` to change this behavior.',
             );
           }
-        } catch {}
+        } catch (handlerError) {
+          console.error('Error in SSE onError handler:', handlerError);
+          await safeSend('❌ An unexpected connection error occurred.');
+        }
       })();
     });
 
@@ -227,25 +326,37 @@ export async function runPrompt(
         if (newContent !== lastContent || tick % 2 === 0) {
           lastContent = newContent;
           await updateStreamMessage(
-            `📌 **Prompt**: ${prompt}\n\n${spinnerChar} **Running...**\n\`\`\`\n${newContent}\n\`\`\``,
+            `${contextHeader}\n📌 **Prompt**: ${prompt}\n\n${spinnerChar} **Running...**\n${newContent}`,
             [buttons],
           );
         }
-      } catch {}
+      } catch (error) {
+        console.error(
+          'Error in stream update interval:',
+          error instanceof Error ? error.message : error,
+        );
+      }
     }, 1000);
 
-    await updateStreamMessage(`📌 **Prompt**: ${prompt}\n\n📝 Sending prompt...`, [buttons]);
+    await updateStreamMessage(
+      `${contextHeader}\n📌 **Prompt**: ${prompt}\n\n📝 Sending prompt...`,
+      [buttons],
+    );
     await sessionManager.sendPrompt(port, sessionId, prompt, preferredModel);
+    promptSent = true;
   } catch (error) {
     if (updateInterval) {
       clearInterval(updateInterval);
     }
 
     const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-    await updateStreamMessage(
-      `📌 **Prompt**: ${prompt}\n\n❌ OpenCode execution failed: ${errorMessage}`,
+    const edited = await updateStreamMessage(
+      `${contextHeader}\n📌 **Prompt**: ${prompt}\n\n❌ OpenCode execution failed: ${errorMessage}`,
       [],
     );
+    if (!edited) {
+      await safeSend(`❌ OpenCode execution failed: ${errorMessage}`);
+    }
 
     const client = sessionManager.getSseClient(threadId);
     if (client) {
@@ -258,7 +369,7 @@ export async function runPrompt(
       await processNextInQueue(channel, threadId, parentChannelId);
     } else {
       dataStore.clearQueue(threadId);
-      await (channel as any).send('❌ Execution failed. Queue cleared.');
+      await safeSend('❌ Execution failed. Queue cleared.');
     }
   }
 }

@@ -4,12 +4,14 @@ import { homedir } from 'node:os';
 import type {
   DataStore,
   ProjectConfig,
+  ChannelBinding,
   ThreadSession,
   WorktreeMapping,
   PassthroughThread,
   QueuedMessage,
   QueueSettings,
 } from '../types/index.js';
+import { sanitizeModel } from '../utils/stringUtils.js';
 
 const CONFIG_DIR = join(homedir(), '.remote-opencode');
 const DATA_FILE = join(CONFIG_DIR, 'data.json');
@@ -85,7 +87,7 @@ export function setChannelModel(channelId: string, model: string): boolean {
   const data = loadData();
   const existing = data.bindings.findIndex((b) => b.channelId === channelId);
   if (existing >= 0) {
-    data.bindings[existing].model = model;
+    data.bindings[existing].model = sanitizeModel(model);
     saveData(data);
     return true;
   }
@@ -94,7 +96,7 @@ export function setChannelModel(channelId: string, model: string): boolean {
 
 export function getChannelModel(channelId: string): string | undefined {
   const binding = loadData().bindings.find((b) => b.channelId === channelId);
-  return binding?.model;
+  return sanitizeModel(binding?.model ?? '');
 }
 
 export function getChannelBinding(channelId: string): string | undefined {
@@ -255,6 +257,20 @@ export function getProjectAutoWorktree(alias: string): boolean {
   return project?.autoWorktree ?? false;
 }
 
+export function setProjectAutoPassthrough(alias: string, enabled: boolean): boolean {
+  const data = loadData();
+  const project = data.projects.find((p) => p.alias === alias);
+  if (!project) return false;
+  project.autoPassthrough = enabled;
+  saveData(data);
+  return true;
+}
+
+export function getProjectAutoPassthrough(alias: string): boolean {
+  const project = getProject(alias);
+  return project?.autoPassthrough ?? false;
+}
+
 // Queue Management
 export function getQueue(threadId: string): QueuedMessage[] {
   const data = loadData();
@@ -291,7 +307,7 @@ export function getQueueSettings(threadId: string): QueueSettings {
     data.queueSettings?.[threadId] ?? {
       paused: false,
       continueOnFailure: false,
-      freshContext: true,
+      freshContext: false,
     }
   );
 }

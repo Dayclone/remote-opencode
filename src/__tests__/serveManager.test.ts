@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { EventEmitter } from 'node:events';
 import type { ChildProcess } from 'node:child_process';
+import { mkdtempSync, writeFileSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 
 vi.mock('node:child_process', () => ({
   spawn: vi.fn(),
@@ -8,7 +11,7 @@ vi.mock('node:child_process', () => ({
 
 vi.mock('node:net', () => ({
   Server: class MockServer extends EventEmitter {
-    listen(_port: number, _callback?: () => void) {
+    listen(port: number, callback?: () => void) {
       setImmediate(() => this.emit('listening'));
       return this;
     }
@@ -29,6 +32,10 @@ import * as serveManager from '../services/serveManager.js';
 import { getPortConfig } from '../services/configStore.js';
 import { spawn } from 'node:child_process';
 
+// When opencode cannot be resolved from PATH, serveManager falls back to the
+// first platform candidate ("opencode.cmd" on Windows, "opencode" elsewhere).
+const EXPECTED_OPENCODE_CMD = process.platform === 'win32' ? 'opencode.cmd' : 'opencode';
+
 const createMockProcess = (): ChildProcess => {
   const proc = new EventEmitter() as ChildProcess;
   Object.defineProperty(proc, 'pid', {
@@ -42,12 +49,18 @@ const createMockProcess = (): ChildProcess => {
 };
 
 describe('serveManager', () => {
+  let originalPath: string | undefined;
+
   beforeEach(() => {
     vi.resetAllMocks();
+    originalPath = process.env.PATH;
+    vi.stubEnv('PATH', '/nonexistent');
   });
 
   afterEach(() => {
     serveManager.stopAll();
+    vi.unstubAllEnvs();
+    process.env.PATH = originalPath;
   });
 
   describe('spawnServe', () => {
@@ -61,13 +74,35 @@ describe('serveManager', () => {
       expect(port).toBeGreaterThanOrEqual(14097);
       expect(port).toBeLessThanOrEqual(14200);
       expect(spawn).toHaveBeenCalledWith(
-        'opencode',
+        EXPECTED_OPENCODE_CMD,
         ['serve', '--port', port.toString()],
         expect.objectContaining({
           cwd: projectPath,
-          shell: true,
+          stdio: ['inherit', 'pipe', 'pipe'],
         }),
       );
+
+      const spawnOptions = vi.mocked(spawn).mock.calls[0]?.[2];
+      expect(spawnOptions).not.toHaveProperty('shell');
+    });
+
+    it('should resolve opencode from PATH before spawning', async () => {
+      const tempDir = mkdtempSync(join(tmpdir(), 'remote-opencode-'));
+      const executableName = process.platform === 'win32' ? 'opencode.cmd' : 'opencode';
+      const resolvedPath = join(tempDir, executableName);
+
+      writeFileSync(resolvedPath, '@echo off');
+      vi.stubEnv('PATH', tempDir);
+
+      const mockProc = createMockProcess();
+      vi.mocked(spawn).mockReturnValue(mockProc);
+
+      try {
+        await serveManager.spawnServe('/test/project');
+        expect(vi.mocked(spawn).mock.calls[0]?.[0]).toBe(resolvedPath);
+      } finally {
+        rmSync(tempDir, { recursive: true, force: true });
+      }
     });
 
     it('should return existing port if serve already running for project', async () => {
@@ -100,7 +135,7 @@ describe('serveManager', () => {
 
       expect(port).toBe(20000);
       expect(spawn).toHaveBeenCalledWith(
-        'opencode',
+        EXPECTED_OPENCODE_CMD,
         ['serve', '--port', '20000'],
         expect.anything(),
       );
@@ -149,23 +184,45 @@ describe('serveManager', () => {
       const mockProc = createMockProcess();
       vi.mocked(spawn).mockReturnValue(mockProc);
 
-      const projectPath = '/test/project';
+      const projectPath = process.cwd();
       await serveManager.spawnServe(projectPath);
 
-      mockProc.emit('error', new Error('spawn opencode ENOENT'));
+      const error = new Error('spawn opencode ENOENT') as NodeJS.ErrnoException;
+      error.code = 'ENOENT';
+      mockProc.emit('error', error);
 
       await new Promise((resolve) => setTimeout(resolve, 10));
 
       const state = serveManager.getInstanceState(projectPath);
       expect(state?.exited).toBe(true);
-      expect(state?.exitError).toContain('spawn opencode ENOENT');
+      expect(state?.exitError).toContain('OpenCode executable not found');
+    });
+
+    it('should report missing project path when spawn fails with inaccessible cwd', async () => {
+      const mockProc = createMockProcess();
+      vi.mocked(spawn).mockReturnValue(mockProc);
+
+      const projectPath = '/definitely/missing/project-path';
+      await serveManager.spawnServe(projectPath);
+
+      const error = new Error('spawn opencode ENOENT') as NodeJS.ErrnoException;
+      error.code = 'ENOENT';
+      mockProc.emit('error', error);
+
+      await new Promise((resolve) => setTimeout(resolve, 10));
+
+      const state = serveManager.getInstanceState(projectPath);
+      expect(state?.exited).toBe(true);
+      expect(state?.exitError).toContain(
+        `Project path does not exist or is not accessible: ${projectPath}`,
+      );
     });
 
     it('should allow respawning after process exits', async () => {
       vi.mocked(spawn).mockImplementation(() => createMockProcess());
 
       const projectPath = '/test/project';
-      const _port1 = await serveManager.spawnServe(projectPath);
+      const port1 = await serveManager.spawnServe(projectPath);
 
       // Get the mock process and mark it as exited
       const mockProc1 = vi.mocked(spawn).mock.results[0].value;
@@ -261,7 +318,9 @@ describe('serveManager', () => {
       await vi.runAllTimersAsync();
 
       await expect(promise).resolves.toBeUndefined();
-      expect(fetch).toHaveBeenCalledWith('http://127.0.0.1:14097/session');
+      expect(fetch).toHaveBeenCalledWith('http://127.0.0.1:14097/session', {
+        headers: {},
+      });
     });
 
     it('should retry if fetch fails or returns not ok', async () => {
@@ -332,6 +391,58 @@ describe('serveManager', () => {
       await vi.advanceTimersByTimeAsync(1500);
 
       await wrappedPromise;
+    });
+
+    describe('OPENCODE_SERVER_PASSWORD auth', () => {
+      const originalPassword = process.env.OPENCODE_SERVER_PASSWORD;
+
+      afterEach(() => {
+        if (originalPassword === undefined) delete process.env.OPENCODE_SERVER_PASSWORD;
+        else process.env.OPENCODE_SERVER_PASSWORD = originalPassword;
+      });
+
+      it('sends Basic Authorization header to readiness probe when password is set', async () => {
+        process.env.OPENCODE_SERVER_PASSWORD = 's3cret';
+        vi.mocked(fetch).mockResolvedValue({ ok: true } as Response);
+
+        const promise = serveManager.waitForReady(14097);
+        await vi.runAllTimersAsync();
+        await expect(promise).resolves.toBeUndefined();
+
+        const expected = `Basic ${Buffer.from('opencode:s3cret').toString('base64')}`;
+        expect(fetch).toHaveBeenCalledWith('http://127.0.0.1:14097/session', {
+          headers: { Authorization: expected },
+        });
+      });
+
+      it('fails fast with a clear error when readiness probe returns 401', async () => {
+        vi.useRealTimers();
+        process.env.OPENCODE_SERVER_PASSWORD = 'wrong';
+        vi.mocked(fetch).mockResolvedValue({
+          ok: false,
+          status: 401,
+        } as Response);
+
+        await expect(serveManager.waitForReady(14097, 5000)).rejects.toThrow(
+          /rejected by the opencode server/i,
+        );
+
+        vi.useFakeTimers();
+      });
+
+      it('fails fast with a clear error when readiness probe returns 401 and password is unset', async () => {
+        vi.useRealTimers();
+        vi.mocked(fetch).mockResolvedValue({
+          ok: false,
+          status: 401,
+        } as Response);
+
+        await expect(serveManager.waitForReady(14097, 5000)).rejects.toThrow(
+          /OPENCODE_SERVER_PASSWORD is not set/i,
+        );
+
+        vi.useFakeTimers();
+      });
     });
   });
 });

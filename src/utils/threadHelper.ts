@@ -4,6 +4,7 @@ import {
   TextChannel,
   ThreadChannel,
 } from 'discord.js';
+import * as dataStore from '../services/dataStore.js';
 
 export async function getOrCreateThread(
   interaction: ChatInputCommandInteraction,
@@ -22,6 +23,12 @@ export async function getOrCreateThread(
       autoArchiveDuration: ThreadAutoArchiveDuration.OneDay,
       reason: 'OpenCode session',
     });
+
+    const alias = dataStore.getChannelBinding(interaction.channelId);
+    if (alias && dataStore.getProjectAutoPassthrough(alias)) {
+      dataStore.setPassthroughMode(thread.id, true, interaction.user.id);
+    }
+
     return thread;
   }
 

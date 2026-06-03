@@ -8,31 +8,42 @@ vi.mock('../services/dataStore.js', () => ({
   getWorktreeMapping: vi.fn(),
 }));
 
-// Mock node:child_process
+// Mock node:child_process. diff.ts uses promisify(execFile), which calls
+// execFile(file, args, options, callback).
 vi.mock('node:child_process', () => ({
-  exec: vi.fn((cmd, options, callback) => {
-    if (cmd.includes('git diff')) {
-      callback(null, { stdout: 'diff output' });
-    } else {
-      callback(null, { stdout: '' });
-    }
-  }),
+  execFile: vi.fn(
+    (
+      _file: string,
+      _args: string[],
+      _options: unknown,
+      callback: (err: unknown, result: { stdout: string; stderr: string }) => void,
+    ) => {
+      callback(null, { stdout: 'diff output', stderr: '' });
+    },
+  ),
 }));
 
 describe('diff command', () => {
   let mockInteraction: any;
 
-  beforeEach(() => {
-    vi.clearAllMocks();
-    mockInteraction = {
+  function makeInteraction(overrides: Partial<any> = {}) {
+    return {
       channelId: 'thread-123',
-      channel: { parentId: 'channel-456' },
+      channel: { isThread: () => false, parentId: 'channel-456' },
+      reply: vi.fn().mockResolvedValue(undefined),
       deferReply: vi.fn().mockResolvedValue(undefined),
       editReply: vi.fn().mockResolvedValue(undefined),
       options: {
-        getBoolean: vi.fn().mockReturnValue(false),
+        getString: vi.fn().mockReturnValue(null),
+        getBoolean: vi.fn().mockReturnValue(null),
       },
+      ...overrides,
     };
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockInteraction = makeInteraction();
   });
 
   it('should return error if no project is bound', async () => {
@@ -41,8 +52,8 @@ describe('diff command', () => {
 
     await diff.execute(mockInteraction);
 
-    expect(mockInteraction.editReply).toHaveBeenCalledWith(
-      expect.stringContaining('❌ No project bound'),
+    expect(mockInteraction.reply).toHaveBeenCalledWith(
+      expect.objectContaining({ content: expect.stringContaining('❌ No project bound') }),
     );
   });
 
@@ -56,6 +67,9 @@ describe('diff command', () => {
   });
 
   it('should show diff for worktree path if in a thread', async () => {
+    mockInteraction = makeInteraction({
+      channel: { isThread: () => true, parentId: 'channel-456' },
+    });
     vi.mocked(dataStore.getWorktreeMapping).mockReturnValue({
       worktreePath: '/path/to/worktree',
     } as any);
@@ -65,12 +79,15 @@ describe('diff command', () => {
     expect(mockInteraction.editReply).toHaveBeenCalledWith(expect.stringContaining('diff output'));
   });
 
-  it('should respect the staged option', async () => {
+  it('should respect the staged target option', async () => {
+    vi.mocked(dataStore.getWorktreeMapping).mockReturnValue(undefined);
     vi.mocked(dataStore.getChannelProjectPath).mockReturnValue('/path/to/project');
-    mockInteraction.options.getBoolean.mockReturnValue(true);
+    mockInteraction.options.getString.mockImplementation((name: string) =>
+      name === 'target' ? 'staged' : null,
+    );
 
     await diff.execute(mockInteraction);
-    // The actual exec call is handled by the mock, but we verified the logic flows
-    expect(mockInteraction.editReply).toHaveBeenCalled();
+
+    expect(mockInteraction.editReply).toHaveBeenCalledWith(expect.stringContaining('diff output'));
   });
 });

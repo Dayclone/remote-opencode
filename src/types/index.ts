@@ -4,6 +4,7 @@ export interface ProjectConfig {
   alias: string;
   path: string;
   autoWorktree?: boolean;
+  autoPassthrough?: boolean;
 }
 
 export interface ChannelBinding {
@@ -26,6 +27,8 @@ export interface QueuedMessage {
   prompt: string;
   userId: string;
   timestamp: number;
+  voiceAttachmentUrl?: string;
+  voiceAttachmentSize?: number;
 }
 
 export interface QueueSettings {
@@ -78,4 +81,12 @@ export interface PassthroughThread {
   enabled: boolean;
   enabledBy: string; // userId
   enabledAt: number;
+}
+
+export interface SessionErrorInfo {
+  name: 'ProviderAuthError' | 'UnknownError' | 'MessageOutputLengthError' | 'MessageAbortedError';
+  data: {
+    message?: string;
+    providerID?: string;
+  };
 }

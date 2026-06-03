@@ -1,9 +1,17 @@
 import { Interaction, MessageFlags } from 'discord.js';
 import { commands } from '../commands/index.js';
 import { handleButton } from './buttonHandler.js';
+import { isAuthorized } from '../services/configStore.js';
 
 export async function handleInteraction(interaction: Interaction) {
   if (interaction.isButton()) {
+    if (!isAuthorized(interaction.user.id)) {
+      await interaction.reply({
+        content: '🚫 You are not authorized to use this bot.',
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
     try {
       await handleButton(interaction);
     } catch (error) {
@@ -12,7 +20,34 @@ export async function handleInteraction(interaction: Interaction) {
     return;
   }
 
+  if (interaction.isAutocomplete()) {
+    const command = commands.get(interaction.commandName);
+    if (command?.autocomplete) {
+      try {
+        await command.autocomplete(interaction);
+      } catch (error) {
+        console.error(`Error handling autocomplete for ${interaction.commandName}:`, error);
+        try {
+          if (!interaction.responded) {
+            await interaction.respond([]);
+          }
+        } catch {
+          // Interaction already expired — nothing to do
+        }
+      }
+    }
+    return;
+  }
+
   if (!interaction.isChatInputCommand()) return;
+
+  if (!isAuthorized(interaction.user.id)) {
+    await interaction.reply({
+      content: '🚫 You are not authorized to use this bot.',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
 
   const command = commands.get(interaction.commandName);
 

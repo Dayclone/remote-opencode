@@ -1,19 +1,37 @@
 import { EventSource } from 'eventsource';
-import type { TextPart, SSEEvent } from '../types/index.js';
+import type { TextPart, SSEEvent, SessionErrorInfo } from '../types/index.js';
+import { getAuthHeaders } from './serverAuth.js';
 
 type PartUpdatedCallback = (part: TextPart) => void;
 type SessionIdleCallback = (sessionId: string) => void;
+type SessionErrorCallback = (sessionId: string, error: SessionErrorInfo) => void;
 type ErrorCallback = (error: Error) => void;
 
 export class SSEClient {
   private eventSource: EventSource | null = null;
   private partUpdatedCallbacks: PartUpdatedCallback[] = [];
   private sessionIdleCallbacks: SessionIdleCallback[] = [];
+  private sessionErrorCallbacks: SessionErrorCallback[] = [];
   private errorCallbacks: ErrorCallback[] = [];
 
   connect(baseUrl: string): void {
     const url = `${baseUrl}/event`;
-    this.eventSource = new EventSource(url);
+    // When OPENCODE_SERVER_PASSWORD is set, forward the same Basic auth
+    // header we use for regular HTTP requests. The `eventsource` package
+    // allows overriding the underlying fetch so we can inject headers —
+    // EventSource itself does not accept headers directly.
+    const authHeaders = getAuthHeaders();
+    const init: ConstructorParameters<typeof EventSource>[1] =
+      Object.keys(authHeaders).length > 0
+        ? {
+            fetch: (input, fetchInit) =>
+              fetch(input, {
+                ...fetchInit,
+                headers: { ...fetchInit?.headers, ...authHeaders },
+              }),
+          }
+        : undefined;
+    this.eventSource = new EventSource(url, init);
 
     this.eventSource.addEventListener('message', (event: MessageEvent) => {
       try {
@@ -35,6 +53,10 @@ export class SSEClient {
 
   onSessionIdle(callback: SessionIdleCallback): void {
     this.sessionIdleCallbacks.push(callback);
+  }
+
+  onSessionError(callback: SessionErrorCallback): void {
+    this.sessionErrorCallbacks.push(callback);
   }
 
   onError(callback: ErrorCallback): void {
@@ -68,6 +90,12 @@ export class SSEClient {
       const sessionID = (event.properties as any).sessionID;
       if (sessionID) {
         this.sessionIdleCallbacks.forEach((cb) => cb(sessionID));
+      }
+    } else if (event.type === 'session.error') {
+      const sessionID = (event.properties as any).sessionID;
+      const error = (event.properties as any).error as SessionErrorInfo | undefined;
+      if (sessionID && error) {
+        this.sessionErrorCallbacks.forEach((cb) => cb(sessionID, error));
       }
     }
   }
